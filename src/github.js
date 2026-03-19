@@ -50,7 +50,11 @@ export async function fetchPullRequests(username, token) {
     );
   } catch (res) {
     if (res.status === 404) throw new Error(`User "${username}" not found`);
-    if (res.status === 403) throw new Error("GitHub API rate limit reached. Add a token or try again later.");
+    if (res.status === 403) {
+      throw new Error(
+        "GitHub API rate limit (anonymous: ~60 requests/hour per IP). Paste a personal access token under Advanced (token)—“Sign in with GitHub” does not apply to these requests—or try again later."
+      );
+    }
     throw new Error("Failed to fetch repos");
   }
 
@@ -147,7 +151,11 @@ export async function fetchRepoPullRequests(owner, repo, token) {
     );
   } catch (res) {
     if (res.status === 404) throw new Error(`Repo "${owner}/${repo}" not found`);
-    if (res.status === 403) throw new Error("GitHub API rate limit reached. Add a token or try again later.");
+    if (res.status === 403) {
+      throw new Error(
+        "GitHub API rate limit (anonymous: ~60 requests/hour per IP). Paste a personal access token under Advanced (token)—“Sign in with GitHub” does not apply to these requests—or try again later."
+      );
+    }
     throw new Error("Failed to fetch pull requests");
   }
 

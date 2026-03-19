@@ -3,7 +3,7 @@ import TreeRing from "./TreeRing.jsx";
 import GallerySection from "./components/GallerySection.jsx";
 import AuthButton from "./components/AuthButton.jsx";
 import PrintPanel from "./components/PrintPanel.jsx";
-import { DendroCard } from "dendrochronology-visualizer/react";
+import LazyDendroStamp from "./components/LazyDendroStamp.jsx";
 import { fetchPullRequests, fetchRepoPullRequests, generateDemoData } from "./github.js";
 import { seedGallery } from "./data/seedGallery.js";
 import { getCache, setCache, addGalleryEntry, getGalleryEntries } from "./lib/cache.js";
@@ -91,7 +91,6 @@ const landingScrollbarHideStyles = `
 `;
 
 export default function App() {
-  const [mode, setMode] = useState("user");
   const [inputValue, setInputValue] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [token, setToken] = useState("");
@@ -118,6 +117,7 @@ export default function App() {
   const [landingPhIndex, setLandingPhIndex] = useState(0);
   const [landingPasteFocused, setLandingPasteFocused] = useState(false);
   const [landingGrowHovered, setLandingGrowHovered] = useState(false);
+  const [createGrowHovered, setCreateGrowHovered] = useState(false);
   const [growLoadingIdx, setGrowLoadingIdx] = useState(0);
 
   // Merge seed + localStorage gallery entries
@@ -203,17 +203,21 @@ export default function App() {
   }, [loading]);
 
   const loadData = useCallback(async (value, modeOverride) => {
-    const useMode = modeOverride !== undefined && modeOverride !== null ? modeOverride : mode;
+    const parsed = parseGithubSourceInput(value);
+    const clean = parsed.value || String(value || "").trim();
+    if (!clean) return;
+
+    const useMode = modeOverride !== undefined && modeOverride !== null ? modeOverride : parsed.mode;
     setLoading(true);
     setError(null);
     setSelectedRepo(null);
-    const slug = useMode === "repo" ? `repo:${value.replace("/", ":")}` : `user:${value}`;
+    const slug = useMode === "repo" ? `repo:${clean.replace("/", ":")}` : `user:${clean}`;
 
     // Check cache
     const cached = getCache(slug);
     if (cached && Date.now() - cached.cachedAt < 3600000) {
       setData(cached.data);
-      setDisplayName(value);
+      setDisplayName(clean);
       setLoading(false);
       return;
     }
@@ -221,15 +225,15 @@ export default function App() {
     try {
       let result;
       if (useMode === "repo") {
-        const parts = value.split("/");
+        const parts = clean.split("/");
         if (parts.length !== 2 || !parts[0] || !parts[1]) {
           throw new Error('Enter a repo as "owner/repo" (e.g. facebook/react)');
         }
         result = await fetchRepoPullRequests(parts[0], parts[1], token || undefined);
-        setDisplayName(value);
+        setDisplayName(clean);
       } else {
-        result = await fetchPullRequests(value, token || undefined);
-        setDisplayName(value);
+        result = await fetchPullRequests(clean, token || undefined);
+        setDisplayName(clean);
       }
       setData(result);
       // Only cache non-empty results
@@ -240,10 +244,10 @@ export default function App() {
       // Add to gallery
       const entry = {
         slug,
-        displayName: value,
+        displayName: clean,
         pullRequests: result.pullRequests,
       };
-      addGalleryEntry({ slug, displayName: value, prCount: result.pullRequests.length });
+      addGalleryEntry({ slug, displayName: clean, prCount: result.pullRequests.length });
       setGalleryEntries((prev) => {
         if (prev.find((e) => e.slug === slug)) return prev;
         return [entry, ...prev];
@@ -253,20 +257,12 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [token, mode]);
-
-  const onGithubPaste = useCallback((e) => {
-    const text = e.clipboardData?.getData("text/plain");
-    if (!text) return;
-    const parsed = parseGithubSourceInput(text);
-    if (parsed.value) setMode(parsed.mode);
-  }, []);
+  }, [token]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const parsed = parseGithubSourceInput(inputValue);
     if (!parsed.value) return;
-    setMode(parsed.mode);
     loadData(parsed.value, parsed.mode);
   };
 
@@ -297,6 +293,9 @@ export default function App() {
   const starterExamples = useMemo(() => seedGallery.slice(0, 6), []);
   const landingStampEntries = useMemo(() => {
     const source = seedGallery.slice(0, 10);
+    const ringsBySlug = Object.fromEntries(
+      source.map((e) => [e.slug, githubPRsToRings(e.pullRequests)]),
+    );
     return Array.from({ length: 120 }, (_, i) => {
       const entry = source[i % source.length];
       const dn = entry.displayName.trim();
@@ -308,7 +307,7 @@ export default function App() {
         id: `${entry.slug}-${i}`,
         entry,
         hoverLabel,
-        rings: githubPRsToRings(entry.pullRequests),
+        rings: ringsBySlug[entry.slug],
       };
     });
   }, []);
@@ -426,17 +425,14 @@ export default function App() {
   }, [currentPage, landingCanvasItems.patternWidth, landingCanvasItems.patternHeight]);
 
   const handleStarterSelect = useCallback((entry) => {
-    const nextMode = entry.slug.startsWith("repo:") ? "repo" : "user";
-    setMode(nextMode);
     setInputValue(entry.displayName);
-    loadData(entry.displayName, nextMode);
+    loadData(entry.displayName);
   }, [loadData]);
 
   const handleLandingSubmit = (e) => {
     e.preventDefault();
     const parsed = parseGithubSourceInput(inputValue);
     if (!parsed.value) return;
-    setMode(parsed.mode);
     setCurrentPage("create");
     loadData(parsed.value, parsed.mode);
   };
@@ -476,6 +472,8 @@ export default function App() {
   };
 
   const GrowLoadingIcon = GROW_LOADING_SEQUENCE[growLoadingIdx];
+  const hasRingData = pullRequests.length > 0;
+  const canExport = hasRingData && displayName !== "demo";
 
   return (
     <div style={styles.page}>
@@ -483,9 +481,12 @@ export default function App() {
       {currentPage === "browse" ? (
         <section style={styles.browsePage}>
           <div style={styles.browseTopBar}>
-            <div style={styles.navTitle}>Dendrocode</div>
+            <button type="button" style={styles.navTitleBtn} onClick={() => setCurrentPage("home")}>
+              Dendrocode
+            </button>
             <div style={styles.navLinks}>
-              <button style={styles.navLinkBtn} onClick={() => setCurrentPage("create")}>Create</button>
+              <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("create")}>Create</button>
+              <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("browse")}>Browse</button>
             </div>
           </div>
           <div style={styles.galleryLead}>
@@ -497,146 +498,217 @@ export default function App() {
             onSelect={handleGallerySelect}
             enableFilters={true}
             showHeader={false}
+            nameOnly
           />
         </section>
       ) : currentPage === "create" ? (
       <section ref={toolRef} style={styles.toolSection}>
-        <div style={styles.browseTopBar}>
-          <div style={styles.navTitle}>Dendrocode</div>
+        <div style={styles.browseTopBarTool}>
+          <button type="button" style={styles.navTitleBtn} onClick={() => setCurrentPage("home")}>
+            Dendrocode
+          </button>
           <div style={styles.navLinks}>
-            <button style={styles.navLinkBtn} onClick={() => setCurrentPage("home")}>Home</button>
-            <button style={styles.navLinkBtn} onClick={() => setCurrentPage("browse")}>Browse</button>
+            <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("create")}>Create</button>
+            <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("browse")}>Browse</button>
           </div>
         </div>
 
-        <div style={styles.toolSectionHeader}>
-          <div>
-            <h2 style={styles.toolTitle}>Create</h2>
-            <p style={styles.toolSub}>
-              {displayName && displayName !== "demo"
-                ? `${displayName}${selectedRepo ? ` / ${selectedRepo}` : ""}`
-                : "Enter a username or repo to generate your tree ring."}
-            </p>
-          </div>
-          <div style={styles.topRightActions}>
-            <AuthButton onAuthChange={setAuthenticated} />
-            {pullRequests.length > 0 && displayName !== "demo" && (
-              <>
-                <button
-                  style={styles.ctaBtn}
-                  onClick={handleDownload}
-                  disabled={exporting}
-                >
-                  {exporting ? "Exporting..." : "Download PNG"}
-                </button>
-                <button
-                  style={{ ...styles.ctaBtn, background: "#6a5a48", color: "#f5f0eb", borderColor: "#6a5a48" }}
-                  onClick={() => setShowPrintPanel(true)}
-                >
-                  Order Print
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+        <div style={styles.createWorkspace}>
+          <div style={styles.createLeft}>
+            <div style={styles.createIntro}>
+              <h2 style={styles.createPageTitle}>Create</h2>
+              <p style={styles.createPageSub}>
+                {displayName && displayName !== "demo"
+                  ? `Showing ${displayName}${selectedRepo ? ` · ${selectedRepo}` : ""}.`
+                  : "Link or example, preview the ring, then download or print."}
+              </p>
+            </div>
 
-        <div style={styles.controlsCard}>
-          {error && <p style={styles.error}>{error}</p>}
+            <div style={styles.createPanelCard}>
+              {error && <p style={styles.error}>{error}</p>}
 
-          <div style={styles.modeToggle}>
-            <button
-              style={{ ...styles.modeBtn, ...(mode === "user" ? styles.modeBtnActive : {}) }}
-              onClick={() => { setMode("user"); setInputValue("octocat"); }}
-            >User</button>
-            <button
-              style={{ ...styles.modeBtn, ...(mode === "repo" ? styles.modeBtnActive : {}) }}
-              onClick={() => { setMode("repo"); setInputValue("facebook/react"); }}
-            >Repo</button>
-          </div>
+              <div style={styles.createStep}>
+                <div style={styles.createStepHead}>
+                  <span style={styles.createStepBadge}>1</span>
+                  <h3 style={styles.createStepTitle}>GitHub URL or example</h3>
+                </div>
+                <p style={styles.createStepHint}>
+                  Paste a URL, <code style={styles.createStepCode}>@user</code>, or{" "}
+                  <code style={styles.createStepCode}>owner/repo</code>—or tap a starter.
+                </p>
+                <form onSubmit={handleSubmit} style={styles.createForm}>
+                  <div style={styles.llmPromptPasteArea}>
+                    <input
+                      type="text"
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      placeholder="GitHub URL, @user, or owner/repo"
+                      autoComplete="off"
+                      aria-label="GitHub URL, @username, or owner/repo"
+                      style={styles.llmPromptInput}
+                    />
+                    <button
+                      type="submit"
+                      style={{
+                        ...styles.llmPromptSubmit,
+                        ...(!inputValue.trim() && !loading ? styles.llmPromptSubmitIdle : null),
+                      }}
+                      disabled={loading || !inputValue.trim()}
+                      aria-label={loading ? "Generating tree ring" : "Generate tree ring"}
+                      onMouseEnter={() => setCreateGrowHovered(true)}
+                      onMouseLeave={() => setCreateGrowHovered(false)}
+                    >
+                      {loading ? (
+                        <span key={growLoadingIdx} style={styles.llmGrowLoadStep} aria-hidden>
+                          <GrowLoadingIcon size={19} strokeWidth={2} />
+                        </span>
+                      ) : createGrowHovered ? (
+                        <Axe size={19} strokeWidth={2} aria-hidden />
+                      ) : (
+                        <Sprout size={19} strokeWidth={2} aria-hidden />
+                      )}
+                    </button>
+                  </div>
+                </form>
 
-          <form onSubmit={handleSubmit} style={{ ...styles.form, ...(isMediumUp ? null : styles.formMobile) }}>
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onPaste={onGithubPaste}
-              placeholder="GitHub URL, @user, or owner/repo"
-              style={{ ...styles.input, ...(isMediumUp ? null : styles.inputMobile) }}
-            />
-            <button
-              type="submit"
-              style={{ ...styles.enterBtn, ...(loading ? styles.enterBtnLoading : null) }}
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <span key={growLoadingIdx} style={styles.llmGrowLoadStep} aria-hidden>
-                    <GrowLoadingIcon size={18} strokeWidth={2} />
-                  </span>
-                  Generating...
-                </>
-              ) : (
-                "Generate Tree Ring"
-              )}
-            </button>
-          </form>
+                <div style={styles.starterRowCreate}>
+                  {starterExamples.map((entry) => (
+                    <button
+                      key={entry.slug}
+                      type="button"
+                      style={styles.starterChipCreate}
+                      onClick={() => handleStarterSelect(entry)}
+                    >
+                      Try {entry.displayName}
+                    </button>
+                  ))}
+                </div>
 
-          <div style={styles.secondaryActions}>
-            <details style={styles.advancedDetails}>
-              <summary style={styles.tokenToggle}>Advanced (token)</summary>
-              <input
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="ghp_..."
-                style={{ ...styles.input, width: 220, marginTop: 8, fontSize: 12 }}
-              />
-            </details>
-          </div>
+                <div style={styles.createStepAuthRow}>
+                  <AuthButton onAuthChange={setAuthenticated} />
+                </div>
 
-          <div style={styles.starterRow}>
-            {starterExamples.map((entry) => (
-              <button
-                key={entry.slug}
-                style={styles.starterChip}
-                onClick={() => handleStarterSelect(entry)}
+                <div style={styles.createSecondaryBlock}>
+                  <details style={styles.advancedDetails}>
+                    <summary style={styles.tokenToggleCreate}>Advanced (token)</summary>
+                    <input
+                      type="password"
+                      value={token}
+                      onChange={(e) => setToken(e.target.value)}
+                      placeholder="ghp_…"
+                      style={styles.createTokenInput}
+                    />
+                  </details>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  ...styles.createStep,
+                  ...styles.createStepDivider,
+                  ...(hasRingData ? null : styles.createStepMuted),
+                }}
               >
-                Try {entry.displayName}
-              </button>
-            ))}
+                <div style={styles.createStepHead}>
+                  <span style={styles.createStepBadge}>2</span>
+                  <h3 style={styles.createStepTitle}>Preview</h3>
+                </div>
+                <p style={styles.createStepHint}>
+                  {!hasRingData
+                    ? "Generate from step 1—the ring appears on the right."
+                    : repoList.length > 1 && displayName !== "demo"
+                      ? "Several repos on this account—filter to one or keep all."
+                      : "Your ring is on the right."}
+                </p>
+                {repoList.length > 1 && displayName !== "demo" && (
+                  <div style={styles.repoRowCreate}>
+                    <span style={styles.repoRowLabel}>Repo filter</span>
+                    <div style={styles.repoRowChips}>
+                      <button
+                        type="button"
+                        style={{ ...styles.chipCreate, ...(selectedRepo === null ? styles.chipCreateActive : {}) }}
+                        onClick={() => setSelectedRepo(null)}
+                      >
+                        All
+                      </button>
+                      {repoList.map((repo) => (
+                        <button
+                          key={repo.name}
+                          type="button"
+                          style={{
+                            ...styles.chipCreate,
+                            ...(selectedRepo === repo.name ? styles.chipCreateActive : {}),
+                          }}
+                          onClick={() => setSelectedRepo(repo.name)}
+                        >
+                          {repo.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {displayName === "demo" && (
+                  <p style={styles.demoHintCreate}>Demo data is showing. Use step 1 for live GitHub data.</p>
+                )}
+              </div>
+
+              <div
+                style={{
+                  ...styles.createStep,
+                  ...(canExport ? null : styles.createStepMuted),
+                }}
+              >
+                <div style={styles.createStepHead}>
+                  <span style={styles.createStepBadge}>3</span>
+                  <h3 style={styles.createStepTitle}>Download or print</h3>
+                </div>
+                <p style={styles.createStepHint}>
+                  {canExport
+                    ? "Save a hi-res PNG or order a wall print."
+                    : "Available once you have live data from step 1 (not demo)."}
+                </p>
+                <div style={styles.createActionsRow}>
+                  <button
+                    type="button"
+                    style={styles.createSecondaryBtn}
+                    onClick={handleDownload}
+                    disabled={exporting || !canExport}
+                  >
+                    {exporting ? "Exporting…" : "Download PNG"}
+                  </button>
+                  <button
+                    type="button"
+                    style={styles.createPrimaryBtn}
+                    onClick={() => setShowPrintPanel(true)}
+                    disabled={!canExport}
+                  >
+                    Order Print
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {displayName === "demo" && (
-            <p style={styles.demoHint}>Demo data is showing. Enter a username or repo for live data.</p>
-          )}
-        </div>
-
-        {repoList.length > 1 && displayName !== "demo" && (
-          <div style={styles.repoRow}>
-            <button
-              style={{ ...styles.chip, ...(selectedRepo === null ? styles.chipActive : {}) }}
-              onClick={() => setSelectedRepo(null)}
-            >All</button>
-            {repoList.map((repo) => (
-              <button
-                key={repo.name}
-                style={{ ...styles.chip, ...(selectedRepo === repo.name ? styles.chipActive : {}) }}
-                onClick={() => setSelectedRepo(repo.name)}
-              >{repo.name}</button>
-            ))}
+          <div style={styles.createRight}>
+            <div style={styles.vizAreaCreate}>
+              {data && (
+                <TreeRing
+                  pullRequests={pullRequests}
+                  username={displayName}
+                  repoName={selectedRepo}
+                  size={chartSize}
+                />
+              )}
+              {loading && <div style={styles.loadingOverlay}>Loading…</div>}
+            </div>
+            <div style={styles.infoAreaCreate}>
+              <span>{pullRequests.length} pull request{pullRequests.length !== 1 ? "s" : ""}</span>
+              <span style={styles.infoDividerCreate}>·</span>
+              <span>width = files</span>
+              <span style={styles.infoDividerCreate}>·</span>
+              <span>texture = commits</span>
+            </div>
           </div>
-        )}
-
-        <div style={styles.vizArea}>
-          {data && <TreeRing pullRequests={pullRequests} username={displayName} repoName={selectedRepo} size={chartSize} />}
-          {loading && <div style={styles.loadingOverlay}>Loading...</div>}
-        </div>
-        <div style={styles.infoArea}>
-          <span>{pullRequests.length} pull request{pullRequests.length !== 1 ? "s" : ""}</span>
-          <span style={styles.infoDivider}>·</span>
-          <span>width = files</span>
-          <span style={styles.infoDivider}>·</span>
-          <span>texture = commits</span>
         </div>
       </section>
       ) : (
@@ -690,28 +762,35 @@ export default function App() {
                                 <abbr title="noun" style={styles.llmPartOfSpeech}>n.</abbr>
                               </p>
                             </div>
-                            <p style={styles.llmDefinition}>
-                              <span style={styles.llmDefNum}>1.</span> A generator that draws concentric rings from
-                              GitHub pull-request history—each band a span of collaboration—by analogy to{" "}
-                              <strong style={styles.llmPromptStrong}>dendrochronology</strong>, the science of reading
-                              past seasons and climates from the growth rings of trees.
-                            </p>
-                            <p style={{ ...styles.llmDefinition, marginBottom: 2 }}>
-                              <span style={styles.llmDefNum}>2.</span>
-                              <Images size={15} strokeWidth={1.75} style={styles.llmInlineIcon} aria-hidden />
-                              <button
-                                type="button"
-                                style={styles.llmInlineGalleryBtn}
-                                onClick={scrollToGallery}
-                              >
-                                Browse the gallery
-                              </button>{" "}
-                              for curated examples.
-                              <Sprout size={15} strokeWidth={1.75} style={styles.llmInlineIconAfter} aria-hidden />
-                              Paste a URL, @handle, or owner/repo below to grow your own.
-                              <Printer size={15} strokeWidth={1.75} style={styles.llmInlineIconAfter} aria-hidden />
-                              When a ring feels right, order a print and keep it on your wall.
-                            </p>
+                            <div style={styles.llmPromptDefinitions}>
+                              <p style={styles.llmDefinition}>
+                                <span style={styles.llmDefNum}>1.</span> A generator that draws concentric rings from
+                                GitHub pull-request history—each band a span of collaboration—by analogy to{" "}
+                                <strong style={styles.llmPromptStrong}>dendrochronology</strong>, the science of reading
+                                past seasons and climates from the growth rings of trees.
+                              </p>
+                              <p style={styles.llmDefinition}>
+                                <span style={styles.llmDefNum}>2.</span>
+                                <Images size={15} strokeWidth={1.75} style={styles.llmInlineIcon} aria-hidden />
+                                <button
+                                  type="button"
+                                  style={styles.llmInlineGalleryBtn}
+                                  onClick={scrollToGallery}
+                                >
+                                  Browse the gallery
+                                </button>{" "}
+                                for curated examples.
+                                <Sprout size={15} strokeWidth={1.75} style={styles.llmInlineIconAfter} aria-hidden />
+                                Paste a URL, @handle, or owner/repo below to grow your own.
+                              </p>
+                              <p style={styles.llmDefinition}>
+                                <span style={styles.llmDefNum}>3.</span>
+                                <Printer size={15} strokeWidth={1.75} style={styles.llmInlineIcon} aria-hidden />
+                                Maybe get a print? Third step after you grow a ring: when it feels right, tap{" "}
+                                <strong style={styles.llmPromptStrong}>Order Print</strong> on Create to put it on your
+                                wall.
+                              </p>
+                            </div>
                           </div>
                           <form onSubmit={handleLandingSubmit} style={styles.llmPromptForm}>
                             <div style={styles.llmPromptPasteArea}>
@@ -719,7 +798,6 @@ export default function App() {
                                 type="text"
                                 value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
-                                onPaste={onGithubPaste}
                                 onFocus={() => setLandingPasteFocused(true)}
                                 onBlur={() => setLandingPasteFocused(false)}
                                 placeholder={LANDING_INPUT_PLACEHOLDERS[landingPhIndex]}
@@ -753,7 +831,7 @@ export default function App() {
                         </div>
                       ) : (
                         <div style={{ ...styles.stampCard, ...(isHovered ? styles.stampCardHover : null) }}>
-                          <DendroCard rings={item.rings} size={size} />
+                          <LazyDendroStamp rings={item.rings} size={size} maxDpr={2} />
                           <div style={{ ...styles.stampMeta, ...(isHovered ? styles.stampMetaVisible : null) }}>
                             <div style={styles.stampMetaLine}>{item.hoverLabel}</div>
                           </div>
@@ -783,8 +861,8 @@ export default function App() {
 
       <footer style={styles.siteCredit} aria-label="Credit">
         Made by{" "}
-        <a href="https://tinyfactories.co" target="_blank" rel="noopener noreferrer" style={styles.siteCreditLink}>
-          tiny factories
+        <a href="https://tinyfactories.space" target="_blank" rel="noopener noreferrer" style={styles.siteCreditLink}>
+          tinyfactories.space
         </a>
       </footer>
     </div>
@@ -834,13 +912,31 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "0 24px",
+    padding: "6px 24px",
     maxWidth: 1240,
     margin: "0 auto",
   },
-  navTitle: {
-    fontSize: 12,
-    color: "#3a3028",
+  /** Same row as browseTopBar but no horizontal padding — parent toolSection already uses padding 24px. */
+  browseTopBarTool: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "6px 0",
+  },
+  navTitleBtn: {
+    margin: 0,
+    padding: 0,
+    border: "none",
+    background: "none",
+    cursor: "pointer",
+    textAlign: "left",
+    fontSize: 20,
+    fontWeight: 600,
+    letterSpacing: "-0.02em",
+    color: "#18181b",
+    lineHeight: 1.12,
+    fontFamily:
+      'ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif',
   },
   navLinks: {
     display: "flex",
@@ -851,10 +947,15 @@ const styles = {
     border: "none",
     background: "none",
     cursor: "pointer",
-    fontSize: 12,
-    color: "#3a3028",
+    fontSize: 13,
+    fontWeight: 600,
+    letterSpacing: "0.02em",
+    color: "#2d6a4f",
     fontFamily: "inherit",
     padding: 0,
+    textDecoration: "underline",
+    textUnderlineOffset: 3,
+    textDecorationColor: "rgba(45, 106, 79, 0.45)",
   },
   heroInner: {
     display: "flex",
@@ -961,17 +1062,30 @@ const styles = {
     border: "1px solid #e4e4e7",
     borderRadius: 0,
     boxShadow: "none",
-    gap: 8,
-    padding: "12px 14px 6px",
+    gap: 0,
+    padding: "12px 14px 14px",
     justifyContent: "flex-start",
+    flex: 1,
+    minHeight: 0,
+    height: "100%",
   },
   llmPromptCardHeader: {
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-start",
-    gap: 0,
+    gap: 12,
     width: "100%",
+    flex: 1,
+    minHeight: 0,
     textAlign: "left",
+  },
+  llmPromptDefinitions: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
+    width: "100%",
+    justifyContent: "space-evenly",
   },
   llmDictHead: {
     marginBottom: 8,
@@ -1020,7 +1134,6 @@ const styles = {
   },
   llmDefinition: {
     margin: 0,
-    marginBottom: 8,
     fontSize: 14,
     lineHeight: 1.6,
     color: "#3f3f46",
@@ -1072,19 +1185,21 @@ const styles = {
     flexDirection: "column",
     alignItems: "stretch",
     margin: 0,
-    marginTop: 0,
+    marginTop: "auto",
+    flexShrink: 0,
+    paddingTop: 16,
   },
   llmPromptPasteArea: {
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
     background: "#ffffff",
     border: "1px solid #e4e4e7",
     borderRadius: 0,
-    padding: "8px 10px 8px 12px",
+    padding: "12px 14px 12px 16px",
     boxSizing: "border-box",
-    minHeight: 52,
+    minHeight: 56,
     width: "100%",
   },
   llmPromptInput: {
@@ -1135,6 +1250,262 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: 10,
+  },
+  createWorkspace: {
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    gap: 28,
+    marginTop: 12,
+  },
+  createLeft: {
+    flex: "1 1 360px",
+    minWidth: 280,
+    maxWidth: "100%",
+    display: "flex",
+    flexDirection: "column",
+    gap: 20,
+  },
+  createRight: {
+    flex: "1 1 420px",
+    minWidth: 280,
+    maxWidth: "100%",
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  createIntro: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  createPageTitle: {
+    margin: 0,
+    fontSize: 28,
+    fontWeight: 600,
+    letterSpacing: "-0.02em",
+    color: "#18181b",
+    lineHeight: 1.12,
+    fontFamily:
+      'ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif',
+  },
+  createPageSub: {
+    margin: 0,
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: "#3f3f46",
+  },
+  createPanelCard: {
+    width: "100%",
+    background: "#ffffff",
+    border: "1px solid #e4e4e7",
+    borderRadius: 0,
+    padding: "18px 18px 20px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 0,
+    boxSizing: "border-box",
+  },
+  createStep: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    padding: "4px 0 20px",
+  },
+  createStepDivider: {
+    borderTop: "1px solid #e4e4e7",
+    marginTop: 4,
+    paddingTop: 20,
+  },
+  createStepMuted: {
+    opacity: 0.5,
+  },
+  createStepHead: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+  createStepBadge: {
+    flexShrink: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 0,
+    background: "#18181b",
+    color: "#fafafa",
+    fontSize: 13,
+    fontWeight: 700,
+    lineHeight: "26px",
+    textAlign: "center",
+    fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+  },
+  createStepTitle: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 600,
+    letterSpacing: "0.02em",
+    color: "#18181b",
+    lineHeight: 1.3,
+  },
+  createStepHint: {
+    margin: 0,
+    fontSize: 13,
+    lineHeight: 1.5,
+    color: "#71717a",
+    marginTop: -2,
+  },
+  createStepCode: {
+    fontSize: "0.92em",
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    color: "#52525b",
+    background: "#f4f4f5",
+    padding: "1px 5px",
+  },
+  createStepAuthRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 2,
+  },
+  createForm: {
+    width: "100%",
+    margin: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
+  createActionsRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 10,
+  },
+  createSecondaryBtn: {
+    padding: "8px 16px",
+    fontSize: 13,
+    fontWeight: 500,
+    borderRadius: 0,
+    border: "1px solid #e4e4e7",
+    background: "#ffffff",
+    color: "#3f3f46",
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  createPrimaryBtn: {
+    padding: "8px 16px",
+    fontSize: 13,
+    fontWeight: 600,
+    borderRadius: 0,
+    border: "1px solid rgba(45, 106, 79, 0.45)",
+    background: "linear-gradient(160deg, #3d8f69 0%, #2d6a4f 55%, #256955 100%)",
+    color: "#f5faf7",
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  createSecondaryBlock: {
+    marginTop: -4,
+  },
+  tokenToggleCreate: {
+    background: "none",
+    border: "none",
+    color: "#71717a",
+    cursor: "pointer",
+    fontSize: 12,
+    textAlign: "left",
+    fontFamily: "inherit",
+    padding: 0,
+  },
+  createTokenInput: {
+    marginTop: 10,
+    width: "100%",
+    maxWidth: 280,
+    padding: "10px 12px",
+    fontSize: 12,
+    border: "1px solid #e4e4e7",
+    borderRadius: 0,
+    background: "#fafafa",
+    color: "#18181b",
+    outline: "none",
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    boxSizing: "border-box",
+  },
+  starterRowCreate: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "flex-start",
+  },
+  starterChipCreate: {
+    border: "1px solid #e4e4e7",
+    borderRadius: 999,
+    padding: "6px 12px",
+    fontSize: 12,
+    background: "#fafafa",
+    color: "#3f3f46",
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  repoRowCreate: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  repoRowLabel: {
+    fontSize: 11,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "rgba(82, 82, 91, 0.85)",
+  },
+  repoRowChips: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  chipCreate: {
+    padding: "5px 10px",
+    fontSize: 11,
+    borderRadius: 999,
+    border: "1px solid #e4e4e7",
+    background: "#fafafa",
+    color: "#52525b",
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  chipCreateActive: {
+    background: "#18181b",
+    borderColor: "#18181b",
+    color: "#fafafa",
+  },
+  demoHintCreate: {
+    fontSize: 12,
+    color: "#71717a",
+    margin: 0,
+    lineHeight: 1.45,
+  },
+  vizAreaCreate: {
+    minHeight: 300,
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    background: "#ffffff",
+    border: "1px solid #e4e4e7",
+    borderRadius: 0,
+    padding: "20px 16px",
+    overflow: "hidden",
+    boxSizing: "border-box",
+  },
+  infoAreaCreate: {
+    fontSize: 12,
+    color: "#71717a",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 6,
+    lineHeight: 1.45,
+  },
+  infoDividerCreate: {
+    color: "#d4d4d8",
   },
   modeToggle: {
     display: "flex",
@@ -1353,13 +1724,15 @@ const styles = {
   },
   galleryTitle: {
     margin: 0,
-    color: "#6a5a48",
-    fontSize: 24,
+    color: "#3a3028",
+    fontSize: 18,
     fontWeight: 500,
+    letterSpacing: "-0.02em",
   },
   gallerySub: {
     margin: "8px 0 14px",
-    color: "#9f8f7f",
-    fontSize: 14,
+    color: "rgba(58, 48, 40, 0.55)",
+    fontSize: 13,
+    lineHeight: 1.45,
   },
 };
