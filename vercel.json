@@ -1,5 +1,16 @@
 {
   "buildCommand": "vite build",
   "outputDirectory": "dist",
-  "framework": "vite"
+  "framework": "vite",
+  "functions": {
+    "api/cron/refresh-popular-gallery.js": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/refresh-popular-gallery",
+      "schedule": "0 6 * * 1"
+    }
+  ]
 }
