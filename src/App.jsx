@@ -4,9 +4,10 @@ import GallerySection from "./components/GallerySection.jsx";
 import AuthButton from "./components/AuthButton.jsx";
 import PrintPanel from "./components/PrintPanel.jsx";
 import LazyDendroStamp from "./components/LazyDendroStamp.jsx";
-import { fetchPullRequests, fetchRepoPullRequests, generateDemoData } from "./github.js";
+import { generateDemoData } from "./github.js";
 import { seedGallery } from "./data/seedGallery.js";
 import { getCache, setCache, addGalleryEntry, getGalleryEntries } from "./lib/cache.js";
+import { fetchTreeData } from "./lib/api.js";
 import { githubPRsToRings } from "./lib/adapter.js";
 import { downloadHighResPNG, exportHighResPNG } from "./lib/exportImage.js";
 import {
@@ -148,7 +149,7 @@ export default function App() {
         return;
       }
       try {
-        const result = await fetchPullRequests("gndclouds");
+        const result = await fetchTreeData("user", "gndclouds", undefined);
         if (!cancelled) {
           if (result.pullRequests.length > 0) {
             setData(result);
@@ -229,10 +230,10 @@ export default function App() {
         if (parts.length !== 2 || !parts[0] || !parts[1]) {
           throw new Error('Enter a repo as "owner/repo" (e.g. facebook/react)');
         }
-        result = await fetchRepoPullRequests(parts[0], parts[1], token || undefined);
+        result = await fetchTreeData("repo", clean, token || undefined);
         setDisplayName(clean);
       } else {
-        result = await fetchPullRequests(clean, token || undefined);
+        result = await fetchTreeData("user", clean, token || undefined);
         setDisplayName(clean);
       }
       setData(result);
