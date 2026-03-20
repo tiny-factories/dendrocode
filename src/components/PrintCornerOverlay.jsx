@@ -96,7 +96,7 @@ function PrintCornerEditCell({
       style={{
         position: "absolute",
         ...pos,
-        zIndex: 3,
+        zIndex: 2,
         display: "flex",
         flexDirection: "column",
         alignItems: pos.alignItems,
@@ -169,8 +169,16 @@ export default function PrintCornerOverlay({
     });
   };
 
+  /** Full-bleed layer above the tree ring canvas (siblings after overlay were stealing pointer events). */
+  const shellStyle = {
+    position: "absolute",
+    inset: 0,
+    zIndex: 10,
+    pointerEvents: "none",
+  };
+
   return (
-    <>
+    <div style={shellStyle}>
       {PRINT_CORNER_SLOT_IDS.map((id) => {
         const pos = cornerLayouts[id];
         const text = (cornerTexts[id] || "").trim();
@@ -185,7 +193,7 @@ export default function PrintCornerOverlay({
               style={{
                 position: "absolute",
                 ...pos,
-                zIndex: 3,
+                zIndex: 1,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: pos.alignItems,
@@ -225,6 +233,6 @@ export default function PrintCornerOverlay({
           />
         );
       })}
-    </>
+    </div>
   );
 }

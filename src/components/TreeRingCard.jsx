@@ -13,29 +13,10 @@ function formatEntryLabel(displayName) {
     : `@${dn}`;
 }
 
-export default function TreeRingCard({ entry, onClick, variant = "full" }) {
+export default function TreeRingCard({ entry, onClick }) {
   const rings = useMemo(() => githubPRsToRings(entry.pullRequests), [entry.pullRequests]);
   const [hovered, setHovered] = useState(false);
   const label = formatEntryLabel(entry.displayName);
-  const nameOnly = (entry.displayName || "").trim();
-
-  if (variant === "name") {
-    return (
-      <button
-        type="button"
-        style={{
-          ...styles.nameTile,
-          ...(hovered ? styles.nameTileHover : {}),
-        }}
-        onClick={onClick}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
-        {nameOnly}
-      </button>
-    );
-  }
-
   return (
     <div
       style={{
@@ -61,28 +42,6 @@ export default function TreeRingCard({ entry, onClick, variant = "full" }) {
 }
 
 const styles = {
-  nameTile: {
-    display: "block",
-    width: "100%",
-    margin: 0,
-    padding: "10px 4px",
-    textAlign: "left",
-    border: "none",
-    borderBottom: "1px solid transparent",
-    background: "transparent",
-    cursor: "pointer",
-    fontFamily: "inherit",
-    fontSize: 13,
-    fontWeight: 400,
-    color: "#3a3028",
-    lineHeight: 1.45,
-    wordBreak: "break-word",
-    transition: "color 0.15s ease, border-color 0.15s ease",
-  },
-  nameTileHover: {
-    color: "#2d6a4f",
-    borderBottomColor: "rgba(45, 106, 79, 0.35)",
-  },
   card: {
     display: "flex",
     alignItems: "center",

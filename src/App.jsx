@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import TreeRing from "./TreeRing.jsx";
 import GallerySection from "./components/GallerySection.jsx";
 import PrintPanel from "./components/PrintPanel.jsx";
@@ -127,6 +127,106 @@ const LANDING_INPUT_PLACEHOLDERS = [
   "rust-lang/rust",
 ];
 
+/** Interactive square preview; reports shell width for ring pixel sizing. */
+function CreateExplorePreviewBlock({
+  targetMaxPx,
+  onShellWidth,
+  ringSize,
+  pullRequests,
+  displayName,
+  repoName,
+  options,
+  loading,
+}) {
+  const shellRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const el = shellRef.current;
+    if (!el) return undefined;
+    const report = () => {
+      const w = Math.floor(el.getBoundingClientRect().width);
+      if (w > 0) onShellWidth(w);
+    };
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [targetMaxPx, onShellWidth]);
+
+  return (
+    <>
+      <div
+        ref={shellRef}
+        style={{
+          width: `min(100%, ${targetMaxPx}px)`,
+          maxWidth: "100%",
+          aspectRatio: "1 / 1",
+          marginLeft: "auto",
+          marginRight: "auto",
+          position: "relative",
+          background: "#fafafa",
+          border: "1px solid #e4e4e7",
+          boxSizing: "border-box",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          }}
+        >
+          <TreeRing
+            interactive
+            pullRequests={pullRequests}
+            username={displayName}
+            repoName={repoName}
+            size={ringSize}
+            options={options}
+          />
+        </div>
+        {loading ? (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 4,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 14,
+              color: "#998877",
+              fontWeight: 300,
+              letterSpacing: 2,
+              background: "rgba(250, 250, 250, 0.75)",
+            }}
+          >
+            Loading…
+          </div>
+        ) : null}
+      </div>
+      <p
+        style={{
+          margin: "10px 0 0",
+          fontSize: 11,
+          lineHeight: 1.45,
+          color: "#71717a",
+          textAlign: "center",
+          maxWidth: 360,
+          marginLeft: "auto",
+          marginRight: "auto",
+        }}
+      >
+        Scroll to zoom · drag to pan · double-click to reset · hover a ring for PR details
+      </p>
+    </>
+  );
+}
+
 const landingScrollbarHideStyles = `
   .landing-canvas-scroll::-webkit-scrollbar {
     width: 0;
@@ -169,11 +269,20 @@ export default function App() {
   const [landingGrowHovered, setLandingGrowHovered] = useState(false);
   const [createGrowHovered, setCreateGrowHovered] = useState(false);
   const [growLoadingIdx, setGrowLoadingIdx] = useState(0);
+  const [releaseFetchState, setReleaseFetchState] = useState("idle");
+  const [releaseDetail, setReleaseDetail] = useState(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareMessage, setShareMessage] = useState(null);
+  const [shareToBrowse, setShareToBrowse] = useState(false);
+  const [accountEntries, setAccountEntries] = useState([]);
+  const [accountLoading, setAccountLoading] = useState(false);
   const [printCornerSlots, setPrintCornerSlots] = useState(() => ({ ...PRINT_CORNER_DEFAULTS }));
   const [printProductSize, setPrintProductSize] = useState(() => PRINT_SIZES[1]);
   const [printProductPaper, setPrintProductPaper] = useState(() => PRINT_PAPERS[0]);
   /** 'clean' = white/matte-style surround (default); 'gallery' = gray room wall */
   const [printPreviewBackdrop, setPrintPreviewBackdrop] = useState(/** @type {"clean" | "gallery"} */ ("clean"));
+  /** explore = interactive rings + tooltips; print = mockup, corner labels, matches export */
+  const [createPreviewMode, setCreatePreviewMode] = useState(/** @type {"explore" | "print"} */ ("explore"));
   const [previewFaceMeasuredW, setPreviewFaceMeasuredW] = useState(0);
 
   const reportPreviewFaceW = useCallback((w) => {
@@ -182,14 +291,7 @@ export default function App() {
 
   useEffect(() => {
     setPreviewFaceMeasuredW(0);
-  }, [printProductSize.id, printProductPaper.id, printPreviewBackdrop]);
-  const [releaseFetchState, setReleaseFetchState] = useState("idle");
-  const [releaseDetail, setReleaseDetail] = useState(null);
-  const [shareBusy, setShareBusy] = useState(false);
-  const [shareMessage, setShareMessage] = useState(null);
-  const [shareToBrowse, setShareToBrowse] = useState(false);
-  const [accountEntries, setAccountEntries] = useState([]);
-  const [accountLoading, setAccountLoading] = useState(false);
+  }, [printProductSize.id, printProductPaper.id, printPreviewBackdrop, createPreviewMode]);
 
   const refreshGallery = useCallback(async () => {
     const stored = getGalleryEntries();
@@ -1022,7 +1124,7 @@ export default function App() {
                   {!hasRingData
                     ? "Generate a ring first—then pick size and paper, and (with live data) corner labels for export."
                     : !canExport
-                      ? "Size and paper update the preview and ring detail. Use live GitHub data (not demo) to edit corners and download a print-ready PNG."
+                      ? "Size and paper update the preview. Hover corners on the print preview to set labels (PNG export and checkout need live GitHub data, not demo)."
                       : "Size and paper drive preview scale, ring geometry, tone, and PNG pixel size. Hover corners on the preview for labels—bottom-right defaults to your size & paper line."}
                 </p>
                 {hasRingData && (
@@ -1095,45 +1197,97 @@ export default function App() {
                 marginLeft: "auto",
                 marginRight: "auto",
               }}
-              aria-label="Print preview — ring and corner labels as exported"
+              aria-label={
+                createPreviewMode === "explore"
+                  ? "Interactive ring preview"
+                  : "Print preview — ring and corner labels as exported"
+              }
             >
               {data ? (
-                <PrintProductMockup
-                  variant="embedded"
-                  backdrop={printPreviewBackdrop}
-                  printSize={printProductSize}
-                  printPaper={printProductPaper}
-                  facePx={printPreviewSheetPx}
-                  onFaceWidth={reportPreviewFaceW}
-                >
-                  <div style={styles.createPrintPreviewInner}>
-                    {canExport && data && (
-                      <PrintCornerOverlay
-                        mode="edit"
-                        slots={printCornerSlots}
-                        onSlotChange={setPrintCornerSlot}
-                        cornerTexts={printCornerTexts}
-                        releaseFetchState={releaseFetchState}
-                      />
-                    )}
-                    <div style={styles.createPrintPreviewRing}>
-                      <TreeRing
-                        pullRequests={pullRequests}
-                        username={displayName}
-                        repoName={selectedRepo}
-                        size={createPageRingSize}
-                        options={dendroPrintOptions}
-                      />
-                      {loading && <div style={styles.loadingOverlay}>Loading…</div>}
-                    </div>
+                <>
+                  <div style={styles.createPreviewToggle} role="tablist" aria-label="Preview mode">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={createPreviewMode === "explore"}
+                      style={{
+                        ...styles.createPreviewTab,
+                        ...(createPreviewMode === "explore" ? styles.createPreviewTabActive : null),
+                      }}
+                      onClick={() => setCreatePreviewMode("explore")}
+                    >
+                      Explore
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={createPreviewMode === "print"}
+                      style={{
+                        ...styles.createPreviewTab,
+                        ...(createPreviewMode === "print" ? styles.createPreviewTabActive : null),
+                      }}
+                      onClick={() => setCreatePreviewMode("print")}
+                    >
+                      Print &amp; export
+                    </button>
                   </div>
-                </PrintProductMockup>
+                  {createPreviewMode === "explore" ? (
+                    <CreateExplorePreviewBlock
+                      targetMaxPx={printPreviewSheetPx}
+                      onShellWidth={reportPreviewFaceW}
+                      ringSize={createPageRingSize}
+                      pullRequests={pullRequests}
+                      displayName={displayName}
+                      repoName={selectedRepo}
+                      options={dendroPrintOptions}
+                      loading={loading}
+                    />
+                  ) : (
+                    <PrintProductMockup
+                      variant="embedded"
+                      backdrop={printPreviewBackdrop}
+                      printSize={printProductSize}
+                      printPaper={printProductPaper}
+                      facePx={printPreviewSheetPx}
+                      onFaceWidth={reportPreviewFaceW}
+                    >
+                      <div style={styles.createPrintPreviewInner}>
+                        {hasRingData && (
+                          <PrintCornerOverlay
+                            mode="edit"
+                            slots={printCornerSlots}
+                            onSlotChange={setPrintCornerSlot}
+                            cornerTexts={printCornerTexts}
+                            releaseFetchState={releaseFetchState}
+                          />
+                        )}
+                        <div style={styles.createPrintPreviewRing}>
+                          <TreeRing
+                            pullRequests={pullRequests}
+                            username={displayName}
+                            repoName={selectedRepo}
+                            size={createPageRingSize}
+                            options={dendroPrintOptions}
+                          />
+                          {loading && <div style={styles.loadingOverlay}>Loading…</div>}
+                        </div>
+                      </div>
+                    </PrintProductMockup>
+                  )}
+                </>
               ) : (
                 <div style={styles.createPrintPreviewPlaceholder}>
                   {loading ? "Loading…" : "Generate a ring to see the print preview."}
                 </div>
               )}
             </div>
+            <p style={styles.createPreviewModeHint}>
+              {data && createPreviewMode === "explore"
+                ? "Switch to Print & export to edit corner labels and match the PNG you’ll download or send to print."
+                : data && createPreviewMode === "print"
+                  ? "Corner labels and framing match your exported image. Use Explore to inspect each ring with tooltips."
+                  : null}
+            </p>
             <div style={styles.createActionsRowBelowViz}>
               <button
                 type="button"
@@ -1146,7 +1300,10 @@ export default function App() {
               <button
                 type="button"
                 style={styles.createPrimaryBtn}
-                onClick={() => setShowPrintPanel(true)}
+                onClick={() => {
+                  setCreatePreviewMode("print");
+                  setShowPrintPanel(true);
+                }}
                 disabled={!canExport}
               >
                 Order Print
@@ -1182,8 +1339,6 @@ export default function App() {
               </div>
             )}
             <div style={styles.infoAreaCreate}>
-              <span>{pullRequests.length} pull request{pullRequests.length !== 1 ? "s" : ""}</span>
-              <span style={styles.infoDividerCreate}>·</span>
               <span>width = files</span>
               <span style={styles.infoDividerCreate}>·</span>
               <span>texture = commits</span>
@@ -1238,9 +1393,7 @@ export default function App() {
                   <li key={entry.slug} style={styles.accountEntryCard}>
                     <div style={styles.accountEntryMain}>
                       <div style={styles.accountEntryTitle}>{entry.displayName}</div>
-                      <div style={styles.accountEntryMeta}>
-                        {entry.prCount ?? entry.pullRequests?.length ?? 0} contributions · {entry.slug}
-                      </div>
+                      <div style={styles.accountEntryMeta}>{entry.slug}</div>
                     </div>
                     <div style={styles.accountEntryActions}>
                       <button
@@ -1897,6 +2050,46 @@ const styles = {
     flexDirection: "column",
     gap: 10,
   },
+  createPreviewToggle: {
+    display: "flex",
+    flexDirection: "row",
+    width: "100%",
+    maxWidth: 420,
+    marginLeft: "auto",
+    marginRight: "auto",
+    marginBottom: 12,
+    border: "1px solid #e4e4e7",
+    background: "#fafafa",
+    boxSizing: "border-box",
+  },
+  createPreviewTab: {
+    flex: 1,
+    padding: "8px 12px",
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    border: "none",
+    background: "transparent",
+    color: "#71717a",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    transition: "background 0.12s, color 0.12s",
+  },
+  createPreviewTabActive: {
+    background: "#18181b",
+    color: "#fafafa",
+  },
+  createPreviewModeHint: {
+    margin: "0 0 4px",
+    fontSize: 11,
+    lineHeight: 1.45,
+    color: "#71717a",
+    textAlign: "center",
+    maxWidth: 420,
+    marginLeft: "auto",
+    marginRight: "auto",
+  },
   createIntro: {
     display: "flex",
     flexDirection: "column",
@@ -2266,13 +2459,14 @@ const styles = {
     minHeight: 0,
   },
   createPrintPreviewRing: {
+    position: "relative",
+    zIndex: 1,
     width: "100%",
     height: "100%",
     minHeight: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
     padding: "clamp(10px, 3.5%, 24px)",
     background: "transparent",
     boxSizing: "border-box",

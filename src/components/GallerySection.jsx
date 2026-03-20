@@ -1,6 +1,15 @@
 import React, { useRef, useEffect, useState, useMemo } from "react";
 import { Search } from "lucide-react";
 import TreeRingCard from "./TreeRingCard.jsx";
+import GalleryBrowseStamp from "./GalleryBrowseStamp.jsx";
+import {
+  getGalleryEntryMetrics,
+  compareLooseRhythm,
+  compareTightRhythm,
+} from "../lib/galleryEntryMetrics.js";
+
+/** Ring diameter in browse grid (matches landing stamp density). */
+const BROWSE_STAMP_SIZE = 96;
 
 /**
  * Responsive gallery grid of tree ring cards.
@@ -19,6 +28,7 @@ export default function GallerySection({
   if (!entries.length) return null;
   const [activeFilter, setActiveFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [browseSort, setBrowseSort] = useState("default");
 
   const filterTags = useMemo(() => {
     if (!enableFilters) return [];
@@ -38,6 +48,29 @@ export default function GallerySection({
     }
     return list;
   }, [entries, enableFilters, activeFilter, searchQuery]);
+
+  const sortedBrowseEntries = useMemo(() => {
+    if (browseSort === "default") return filteredEntries;
+    const list = [...filteredEntries];
+    const metricBySlug = new Map(list.map((e) => [e.slug, getGalleryEntryMetrics(e)]));
+    const m = (e) => metricBySlug.get(e);
+    switch (browseSort) {
+      case "rings_more":
+        return list.sort((a, b) => m(b).ringCount - m(a).ringCount);
+      case "rings_fewer":
+        return list.sort((a, b) => m(a).ringCount - m(b).ringCount);
+      case "rhythm_loose":
+        return list.sort((a, b) => compareLooseRhythm(m(a), m(b)));
+      case "rhythm_tight":
+        return list.sort((a, b) => compareTightRhythm(m(a), m(b)));
+      case "bands_rough":
+        return list.sort((a, b) => m(b).widthStdev - m(a).widthStdev);
+      case "bands_smooth":
+        return list.sort((a, b) => m(a).widthStdev - m(b).widthStdev);
+      default:
+        return list;
+    }
+  }, [filteredEntries, browseSort]);
 
   const sectionStyle = {
     ...styles.section,
@@ -78,33 +111,10 @@ export default function GallerySection({
           </div>
           <div style={styles.browseBody}>
             <aside style={styles.browseSidebar} aria-label="Gallery filters">
-              <div style={styles.browseSidebarSection}>
-                <span style={styles.browseSidebarHeading}>Tags</span>
-                <div style={styles.browseSidebarChips}>
-                  {BROWSE_QUICK_TAGS.map(({ label, value }) => {
-                    const active = searchQuery.trim().toLowerCase() === value.toLowerCase();
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        style={{
-                          ...styles.browseQuickTagSidebar,
-                          ...(active ? styles.browseQuickTagActive : {}),
-                        }}
-                        onClick={() => {
-                          setSearchQuery(active ? "" : value);
-                        }}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
               {enableFilters && filterTags.length > 1 && (
                 <div style={styles.browseSidebarSection}>
                   <span style={styles.browseSidebarHeading}>Type</span>
-                  <div style={styles.browseSidebarChips}>
+                  <div style={styles.browseSidebarChipsType}>
                     {filterTags.map((tag) => (
                       <button
                         key={tag}
@@ -121,6 +131,47 @@ export default function GallerySection({
                   </div>
                 </div>
               )}
+              <div style={styles.browseSidebarSection}>
+                <span style={styles.browseSidebarHeading}>Arrange</span>
+                <div style={styles.browseSidebarChipsType}>
+                  {BROWSE_SORT_OPTIONS.map(({ id, label }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      style={{
+                        ...styles.browseTypeChipSidebar,
+                        ...(browseSort === id ? styles.browseTypeChipSidebarActive : {}),
+                      }}
+                      onClick={() => setBrowseSort(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={styles.browseSidebarSection}>
+                <span style={styles.browseSidebarHeading}>Tags</span>
+                <div style={styles.browseTagCloud} role="group" aria-label="Quick filter tags">
+                  {BROWSE_QUICK_TAGS.map(({ label, value }) => {
+                    const active = searchQuery.trim().toLowerCase() === value.toLowerCase();
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        style={{
+                          ...styles.browseQuickTagPill,
+                          ...(active ? styles.browseQuickTagPillActive : {}),
+                        }}
+                        onClick={() => {
+                          setSearchQuery(active ? "" : value);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </aside>
             <div style={styles.browseResults}>
               <div
@@ -137,7 +188,7 @@ export default function GallerySection({
                     {enableFilters && activeFilter !== "all" ? " in this category" : ""}.
                   </p>
                 ) : (
-                  filteredEntries.map((entry) => (
+                  sortedBrowseEntries.map((entry) => (
                     <LazyCard key={entry.slug} entry={entry} onSelect={onSelect} nameOnly />
                   ))
                 )}
@@ -191,30 +242,31 @@ function LazyCard({ entry, onSelect, nameOnly }) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (nameOnly) {
-      setVisible(true);
-      return undefined;
-    }
     const el = ref.current;
     if (!el) return undefined;
     const obs = new IntersectionObserver(
-      ([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect(); } },
-      { rootMargin: "200px" }
+      ([e]) => {
+        if (e.isIntersecting) {
+          setVisible(true);
+          obs.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [nameOnly]);
+  }, []);
 
   return (
-    <div ref={ref} style={{ ...styles.cardSlot, ...(nameOnly ? styles.cardSlotNameOnly : {}) }}>
+    <div ref={ref} style={{ ...styles.cardSlot, ...(nameOnly ? styles.cardSlotBrowseStamp : {}) }}>
       {visible ? (
-        <TreeRingCard
-          entry={entry}
-          variant={nameOnly ? "name" : "full"}
-          onClick={() => onSelect(entry)}
-        />
+        nameOnly ? (
+          <GalleryBrowseStamp entry={entry} onSelect={onSelect} size={BROWSE_STAMP_SIZE} />
+        ) : (
+          <TreeRingCard entry={entry} onClick={() => onSelect(entry)} />
+        )
       ) : (
-        <div style={nameOnly ? styles.skeletonName : styles.skeleton} />
+        <div style={nameOnly ? styles.skeletonBrowseStamp : styles.skeleton} />
       )}
     </div>
   );
@@ -323,25 +375,43 @@ const styles = {
     textTransform: "uppercase",
     color: "rgba(58, 48, 40, 0.45)",
   },
-  browseSidebarChips: {
+  browseSidebarChipsType: {
     display: "flex",
     flexDirection: "column",
     alignItems: "stretch",
+    gap: 0,
+  },
+  browseTagCloud: {
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    alignContent: "flex-start",
     gap: 8,
   },
-  browseQuickTagSidebar: {
-    border: "1px solid rgba(58, 48, 40, 0.18)",
-    borderRadius: 8,
-    padding: "8px 12px",
+  browseQuickTagPill: {
+    border: "1px solid rgba(58, 48, 40, 0.2)",
+    borderRadius: 999,
+    padding: "6px 12px",
     fontSize: 12,
+    lineHeight: 1.2,
     color: "#3a3028",
-    background: "transparent",
+    background: "rgba(255, 255, 255, 0.55)",
     cursor: "pointer",
     fontFamily: "inherit",
-    textAlign: "left",
-    width: "100%",
+    textAlign: "center",
+    width: "auto",
+    maxWidth: "100%",
     boxSizing: "border-box",
-    transition: "border-color 0.15s ease, color 0.15s ease",
+    textDecoration: "none",
+    transition: "border-color 0.15s ease, color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease",
+  },
+  browseQuickTagPillActive: {
+    borderColor: "#2d6a4f",
+    color: "#1b4332",
+    background: "rgba(45, 106, 79, 0.1)",
+    fontWeight: 600,
+    boxShadow: "inset 0 0 0 1px rgba(45, 106, 79, 0.12)",
   },
   browseTypeChipSidebar: {
     border: "none",
@@ -359,6 +429,7 @@ const styles = {
     textAlign: "left",
     width: "100%",
     boxSizing: "border-box",
+    textDecoration: "none",
   },
   browseTypeChipSidebarActive: {
     borderBottom: "2px solid #2d6a4f",
@@ -452,9 +523,9 @@ const styles = {
     gap: 18,
   },
   gridNameOnly: {
-    gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-    columnGap: 28,
-    rowGap: 4,
+    gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))",
+    columnGap: 16,
+    rowGap: 72,
   },
   gridCompact: {
     gridTemplateColumns: "1fr",
@@ -468,10 +539,11 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
   },
-  cardSlotNameOnly: {
-    minHeight: 0,
-    alignItems: "stretch",
-    justifyContent: "stretch",
+  cardSlotBrowseStamp: {
+    minHeight: 168,
+    paddingBottom: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
   skeleton: {
     width: 180,
@@ -480,15 +552,25 @@ const styles = {
     background: "rgba(180, 160, 140, 0.08)",
     animation: "pulse 2s ease-in-out infinite",
   },
-  skeletonName: {
-    width: "72%",
-    height: 14,
-    borderRadius: 2,
-    margin: "10px 4px",
-    background: "rgba(58, 48, 40, 0.06)",
+  skeletonBrowseStamp: {
+    width: 96,
+    height: 96,
+    borderRadius: "50%",
+    background: "linear-gradient(145deg, rgba(232, 224, 214, 0.9), rgba(200, 188, 172, 0.45))",
     animation: "pulse 2s ease-in-out infinite",
   },
 };
+
+/** Sort browse grid by ring-derived signals (count, merge spacing, band thickness variance). */
+const BROWSE_SORT_OPTIONS = [
+  { id: "default", label: "Default order" },
+  { id: "rings_more", label: "Most rings" },
+  { id: "rings_fewer", label: "Fewest rings" },
+  { id: "rhythm_loose", label: "Looser rhythm" },
+  { id: "rhythm_tight", label: "Tighter rhythm" },
+  { id: "bands_rough", label: "Rougher bands" },
+  { id: "bands_smooth", label: "Smoother bands" },
+];
 
 /** Shortcuts for browse search; values match substrings in curated display names. */
 const BROWSE_QUICK_TAGS = [

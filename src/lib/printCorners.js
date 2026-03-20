@@ -60,7 +60,7 @@ export function resolvePrintCornerTexts(args) {
 
   const dn = (displayName || "").trim();
   const orgRepoLine = creditTarget ? `${creditTarget.owner} / ${creditTarget.repo}` : "";
-  const contribLine = `${pullRequests.length} contributions · dendrochronology`;
+  const contribLine = "dendrochronology";
   const rangeLine = contributionDateRangeLabel(pullRequests);
   let releaseLine = "";
   if (releaseFetchState === "done" && releaseDetail) {
