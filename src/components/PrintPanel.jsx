@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import TreeRing from "../TreeRing.jsx";
 import PrintCornerOverlay from "./PrintCornerOverlay.jsx";
 import PrintProductMockup from "./PrintProductMockup.jsx";
@@ -19,16 +19,22 @@ export default function PrintPanel({
   printCornerTexts = {},
   printSize,
   printPaper,
+  previewBackdrop = "clean",
   onPrintSizeChange,
   onPrintPaperChange,
 }) {
   const [ordering, setOrdering] = useState(false);
+  const [modalFaceMeasured, setModalFaceMeasured] = useState(0);
 
   const [internalSize, setInternalSize] = useState(PRINT_SIZES[1]);
   const [internalPaper, setInternalPaper] = useState(PRINT_PAPERS[0]);
 
   const size = printSize ?? internalSize;
   const paper = printPaper ?? internalPaper;
+
+  useEffect(() => {
+    setModalFaceMeasured(0);
+  }, [size.id, paper.id, previewBackdrop]);
 
   const pickSize = (s) => {
     onPrintSizeChange?.(s);
@@ -42,6 +48,10 @@ export default function PrintPanel({
   const dendroOpts = dendroDrawOptionsForPrint(size, paper);
   const modalFacePx = useMemo(() => modalPrintFacePx(size), [size]);
   const modalRingPx = useMemo(() => modalRingDrawPx(modalFacePx), [modalFacePx]);
+  const modalRingPxEff =
+    modalFaceMeasured > 0
+      ? modalRingDrawPx(modalFaceMeasured)
+      : Math.min(modalRingPx, 260);
   const total = size.price + paper.surcharge;
 
   const handleOrder = async () => {
@@ -69,7 +79,14 @@ export default function PrintPanel({
           <div style={styles.previewBlock}>
             <div style={styles.previewLabel}>Print preview</div>
             <div style={styles.previewMockupWrap}>
-              <PrintProductMockup variant="modal" printSize={size} printPaper={paper} facePx={modalFacePx}>
+              <PrintProductMockup
+                variant="modal"
+                backdrop={previewBackdrop}
+                printSize={size}
+                printPaper={paper}
+                facePx={modalFacePx}
+                onFaceWidth={setModalFaceMeasured}
+              >
                 <div style={styles.previewFaceInner}>
                   <PrintCornerOverlay mode="read" cornerTexts={printCornerTexts} />
                   <div style={styles.previewRingPad}>
@@ -77,7 +94,7 @@ export default function PrintPanel({
                       pullRequests={ringPreview.pullRequests}
                       username={ringPreview.username || displayName}
                       repoName={ringPreview.repoName}
-                      size={modalRingPx}
+                      size={modalRingPxEff}
                       options={dendroOpts}
                     />
                   </div>

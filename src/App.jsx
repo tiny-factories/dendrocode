@@ -172,6 +172,17 @@ export default function App() {
   const [printCornerSlots, setPrintCornerSlots] = useState(() => ({ ...PRINT_CORNER_DEFAULTS }));
   const [printProductSize, setPrintProductSize] = useState(() => PRINT_SIZES[1]);
   const [printProductPaper, setPrintProductPaper] = useState(() => PRINT_PAPERS[0]);
+  /** 'clean' = white/matte-style surround (default); 'gallery' = gray room wall */
+  const [printPreviewBackdrop, setPrintPreviewBackdrop] = useState(/** @type {"clean" | "gallery"} */ ("clean"));
+  const [previewFaceMeasuredW, setPreviewFaceMeasuredW] = useState(0);
+
+  const reportPreviewFaceW = useCallback((w) => {
+    setPreviewFaceMeasuredW(w);
+  }, []);
+
+  useEffect(() => {
+    setPreviewFaceMeasuredW(0);
+  }, [printProductSize.id, printProductPaper.id, printPreviewBackdrop]);
   const [releaseFetchState, setReleaseFetchState] = useState("idle");
   const [releaseDetail, setReleaseDetail] = useState(null);
   const [shareBusy, setShareBusy] = useState(false);
@@ -632,7 +643,14 @@ export default function App() {
   const isLargeUp = viewportWidth >= 1280;
   const basePrintSheetPx = isLargeUp ? 520 : (isMediumUp ? 440 : Math.max(260, Math.min(viewportWidth - 48, 340)));
   const printPreviewSheetPx = previewSheetPxForPrint(basePrintSheetPx, printProductSize);
-  const createPageRingSize = Math.max(180, Math.round(printPreviewSheetPx * 0.76));
+  const createPageRingFallbackCap = Math.min(
+    Math.max(180, Math.round(printPreviewSheetPx * 0.76)),
+    Math.max(140, Math.round(viewportWidth * 0.4)),
+  );
+  const createPageRingSize =
+    previewFaceMeasuredW > 0
+      ? Math.max(120, Math.round(previewFaceMeasuredW * 0.76))
+      : createPageRingFallbackCap;
   const starterExamples = useMemo(() => seedGallery.slice(0, 6), []);
   const landingStampEntries = useMemo(() => {
     const source = seedGallery.slice(0, 10);
@@ -865,17 +883,19 @@ export default function App() {
           </div>
         </div>
 
+        <header style={styles.createPageLead}>
+          <div style={styles.createIntro}>
+            <h2 style={styles.createPageTitle}>Create</h2>
+            <p style={styles.createPageSub}>
+              {displayName && displayName !== "demo"
+                ? `Showing ${displayName}${selectedRepo ? ` · ${selectedRepo}` : ""}.`
+                : "Link or example, preview the ring, then download or print."}
+            </p>
+          </div>
+        </header>
+
         <div style={styles.createWorkspace}>
           <div style={styles.createLeft}>
-            <div style={styles.createIntro}>
-              <h2 style={styles.createPageTitle}>Create</h2>
-              <p style={styles.createPageSub}>
-                {displayName && displayName !== "demo"
-                  ? `Showing ${displayName}${selectedRepo ? ` · ${selectedRepo}` : ""}.`
-                  : "Link or example, preview the ring, then download or print."}
-              </p>
-            </div>
-
             <div style={styles.createPanelCard}>
               {error && <p style={styles.error}>{error}</p>}
 
@@ -889,7 +909,7 @@ export default function App() {
                   <code style={styles.createStepCode}>owner/repo</code>—or tap a starter.
                 </p>
                 <form onSubmit={handleSubmit} style={styles.createForm}>
-                  <div style={styles.llmPromptPasteArea}>
+                  <div style={styles.createGithubPasteArea}>
                     <input
                       type="text"
                       value={inputValue}
@@ -897,12 +917,12 @@ export default function App() {
                       placeholder="GitHub URL, @user, or owner/repo"
                       autoComplete="off"
                       aria-label="GitHub URL, @username, or owner/repo"
-                      style={styles.llmPromptInput}
+                      style={styles.createGithubInput}
                     />
                     <button
                       type="submit"
                       style={{
-                        ...styles.llmPromptSubmit,
+                        ...styles.createGithubSubmit,
                         ...(!inputValue.trim() && !loading ? styles.llmPromptSubmitIdle : null),
                       }}
                       disabled={loading || !inputValue.trim()}
@@ -912,12 +932,12 @@ export default function App() {
                     >
                       {loading ? (
                         <span key={growLoadingIdx} style={styles.llmGrowLoadStep} aria-hidden>
-                          <GrowLoadingIcon size={19} strokeWidth={2} />
+                          <GrowLoadingIcon size={17} strokeWidth={2} />
                         </span>
                       ) : createGrowHovered ? (
-                        <Axe size={19} strokeWidth={2} aria-hidden />
+                        <Axe size={17} strokeWidth={2} aria-hidden />
                       ) : (
-                        <Sprout size={19} strokeWidth={2} aria-hidden />
+                        <Sprout size={17} strokeWidth={2} aria-hidden />
                       )}
                     </button>
                   </div>
@@ -1043,6 +1063,15 @@ export default function App() {
                         </button>
                       ))}
                     </div>
+                    <label style={styles.createBackdropRow}>
+                      <input
+                        type="checkbox"
+                        checked={printPreviewBackdrop === "gallery"}
+                        onChange={(e) => setPrintPreviewBackdrop(e.target.checked ? "gallery" : "clean")}
+                        style={styles.createBackdropCheckbox}
+                      />
+                      <span>Show room backdrop (neutral gallery wall)</span>
+                    </label>
                   </div>
                 )}
                 {canExport && wantsReleaseForPrint && creditTarget && (
@@ -1061,7 +1090,8 @@ export default function App() {
             <div
               style={{
                 width: "100%",
-                maxWidth: printPreviewSheetPx + 28,
+                maxWidth: "100%",
+                minWidth: 0,
                 marginLeft: "auto",
                 marginRight: "auto",
               }}
@@ -1070,9 +1100,11 @@ export default function App() {
               {data ? (
                 <PrintProductMockup
                   variant="embedded"
+                  backdrop={printPreviewBackdrop}
                   printSize={printProductSize}
                   printPaper={printProductPaper}
                   facePx={printPreviewSheetPx}
+                  onFaceWidth={reportPreviewFaceW}
                 >
                   <div style={styles.createPrintPreviewInner}>
                     {canExport && data && (
@@ -1400,6 +1432,7 @@ export default function App() {
           displayName={displayName}
           printSize={printProductSize}
           printPaper={printProductPaper}
+          previewBackdrop={printPreviewBackdrop}
           onPrintSizeChange={setPrintProductSize}
           onPrintPaperChange={setPrintProductPaper}
           ringPreview={{
@@ -1831,13 +1864,22 @@ const styles = {
     flexDirection: "column",
     gap: 10,
   },
+  createPageLead: {
+    width: "100%",
+    minWidth: 0,
+    paddingTop: 16,
+    paddingBottom: 20,
+    marginBottom: 4,
+    borderBottom: "1px solid #e4e4e7",
+  },
   createWorkspace: {
     display: "flex",
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "flex-start",
     gap: 28,
-    marginTop: 12,
+    marginTop: 20,
+    minWidth: 0,
   },
   createLeft: {
     flex: "1 1 360px",
@@ -1845,11 +1887,11 @@ const styles = {
     maxWidth: "100%",
     display: "flex",
     flexDirection: "column",
-    gap: 20,
+    gap: 0,
   },
   createRight: {
     flex: "1 1 420px",
-    minWidth: 280,
+    minWidth: 0,
     maxWidth: "100%",
     display: "flex",
     flexDirection: "column",
@@ -1946,6 +1988,47 @@ const styles = {
     margin: 0,
     display: "flex",
     flexDirection: "column",
+  },
+  /** Compact GitHub URL row on Create (landing keeps larger llmPrompt* styles). */
+  createGithubPasteArea: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    background: "#ffffff",
+    border: "1px solid #e4e4e7",
+    borderRadius: 0,
+    padding: "6px 8px 6px 11px",
+    boxSizing: "border-box",
+    width: "100%",
+  },
+  createGithubInput: {
+    flex: 1,
+    minWidth: 0,
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    fontSize: 14,
+    lineHeight: 1.4,
+    color: "#18181b",
+    fontFamily: "inherit",
+    padding: "3px 2px",
+  },
+  createGithubSubmit: {
+    width: 34,
+    height: 34,
+    flexShrink: 0,
+    borderRadius: 0,
+    border: "1px solid rgba(45, 106, 79, 0.45)",
+    background: "linear-gradient(160deg, #3d8f69 0%, #2d6a4f 55%, #256955 100%)",
+    color: "#f5faf7",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    boxShadow: "none",
+    transition: "opacity 0.15s ease, transform 0.15s ease",
   },
   createReleaseCreditBlock: {
     marginTop: 12,
@@ -2161,6 +2244,20 @@ const styles = {
     fontSize: 12,
     fontWeight: 500,
     opacity: 0.85,
+  },
+  createBackdropRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+    marginTop: 14,
+    fontSize: 12,
+    color: "#52525b",
+    cursor: "pointer",
+    lineHeight: 1.45,
+  },
+  createBackdropCheckbox: {
+    marginTop: 3,
+    flexShrink: 0,
   },
   createPrintPreviewInner: {
     position: "relative",

@@ -1,38 +1,63 @@
-import React from "react";
+import React, { useLayoutEffect, useRef } from "react";
 
 /**
- * Fine-art print “true preview”: neutral wall, square sheet at relative size, paper finish overlay, caption.
+ * Print preview: square sheet with optional paper texture. Backdrop "clean" (default) or "gallery" wall.
+ * Reports actual face width via onFaceWidth so the ring canvas can match and avoid overflow.
  *
  * @param {{
  *   variant?: "modal" | "embedded",
+ *   backdrop?: "clean" | "gallery",
  *   printSize: { label: string, inches: number },
  *   printPaper: { id: string, label: string },
  *   facePx: number,
  *   showCaption?: boolean,
+ *   onFaceWidth?: (widthPx: number) => void,
  *   children: React.ReactNode,
  * }} props
  */
 export default function PrintProductMockup({
   variant = "modal",
+  backdrop = "clean",
   printSize,
   printPaper,
   facePx,
   showCaption = true,
+  onFaceWidth,
   children,
 }) {
   const warm = printPaper.id === "hahnemuhle";
-  const wallStyle = variant === "modal" ? styles.wallModal : styles.wallEmbedded;
+  const faceRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+
+  const wallStyle = pickWallStyle(variant, backdrop);
+
+  useLayoutEffect(() => {
+    const el = faceRef.current;
+    if (!el || !onFaceWidth) return undefined;
+
+    const report = () => {
+      const w = Math.floor(el.getBoundingClientRect().width);
+      if (w > 0) onFaceWidth(w);
+    };
+
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [onFaceWidth, facePx, backdrop, variant]);
 
   return (
     <div style={wallStyle}>
       <div style={styles.column}>
         <div
+          ref={faceRef}
           role="img"
           aria-label={`Print preview, ${printSize.label}, ${printPaper.label}`}
           style={{
             ...styles.face,
-            width: facePx,
-            height: facePx,
+            width: `min(100%, ${facePx}px)`,
+            maxWidth: "100%",
+            aspectRatio: "1 / 1",
+            height: "auto",
             boxShadow: warm ? styles.faceShadowWarm : styles.faceShadowMatte,
           }}
         >
@@ -61,6 +86,13 @@ export default function PrintProductMockup({
   );
 }
 
+function pickWallStyle(variant, backdrop) {
+  if (backdrop === "gallery") {
+    return variant === "modal" ? styles.wallModal : styles.wallEmbedded;
+  }
+  return variant === "modal" ? styles.wallCleanModal : styles.wallCleanEmbedded;
+}
+
 function paperCaption(p) {
   if (p.id === "matte") return "Enhanced matte finish";
   if (p.id === "hahnemuhle") return "Hahnemühle etching (warmer, textured)";
@@ -74,6 +106,8 @@ const styles = {
     padding: "22px 20px 18px",
     boxSizing: "border-box",
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.22), 0 1px 3px rgba(0,0,0,0.06)",
+    width: "100%",
+    minWidth: 0,
   },
   wallEmbedded: {
     background: "linear-gradient(165deg, #d4d0c9 0%, #c3beb6 55%, #b5afa7 100%)",
@@ -81,12 +115,32 @@ const styles = {
     padding: "12px 14px 10px",
     boxSizing: "border-box",
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18)",
+    width: "100%",
+    minWidth: 0,
+  },
+  wallCleanModal: {
+    background: "transparent",
+    borderRadius: 0,
+    padding: "4px 0 12px",
+    boxSizing: "border-box",
+    width: "100%",
+    minWidth: 0,
+  },
+  wallCleanEmbedded: {
+    background: "transparent",
+    borderRadius: 0,
+    padding: "0 0 10px",
+    boxSizing: "border-box",
+    width: "100%",
+    minWidth: 0,
   },
   column: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     gap: 12,
+    width: "100%",
+    minWidth: 0,
   },
   face: {
     position: "relative",
@@ -95,8 +149,8 @@ const styles = {
     boxSizing: "border-box",
     overflow: "hidden",
   },
-  faceShadowMatte: "0 22px 40px rgba(20, 18, 14, 0.28), 0 8px 16px rgba(20, 18, 14, 0.14), 0 1px 0 rgba(255,255,255,0.5) inset",
-  faceShadowWarm: "0 24px 44px rgba(28, 20, 14, 0.32), 0 9px 18px rgba(28, 20, 14, 0.16), 0 1px 0 rgba(255,252,248,0.45) inset",
+  faceShadowMatte: "0 18px 36px rgba(20, 18, 14, 0.18), 0 6px 12px rgba(20, 18, 14, 0.1), 0 1px 0 rgba(255,255,255,0.55) inset",
+  faceShadowWarm: "0 20px 38px rgba(28, 20, 14, 0.2), 0 7px 14px rgba(28, 20, 14, 0.11), 0 1px 0 rgba(255,252,248,0.5) inset",
   paperBase: {
     position: "absolute",
     inset: 0,
@@ -122,10 +176,9 @@ const styles = {
     borderRadius: 1,
   },
   faceInner: {
-    position: "relative",
+    position: "absolute",
+    inset: 0,
     zIndex: 3,
-    width: "100%",
-    height: "100%",
     overflow: "hidden",
   },
   caption: {
@@ -134,7 +187,7 @@ const styles = {
     lineHeight: 1.45,
     color: "rgba(40, 38, 34, 0.82)",
     textAlign: "center",
-    maxWidth: 320,
+    maxWidth: "min(100%, 320px)",
     fontWeight: 400,
   },
   captionStrong: {
