@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import TreeRing from "./TreeRing.jsx";
 import GallerySection from "./components/GallerySection.jsx";
-import AuthButton from "./components/AuthButton.jsx";
 import PrintPanel from "./components/PrintPanel.jsx";
 import LazyDendroStamp from "./components/LazyDendroStamp.jsx";
 import { generateDemoData } from "./github.js";
@@ -23,8 +22,14 @@ import {
   CircleUser,
 } from "lucide-react";
 
-/** Browse / Create / Account top bar: Sign in link, or account icon when authenticated. */
-function TopBarNavAuth({ authenticated, currentPage, setCurrentPage, styles: navStyles }) {
+/** Browse / Create / Account: Sign in link, or account icon (+ optional Sign out in forms). */
+function TopBarNavAuth({
+  authenticated,
+  currentPage,
+  setCurrentPage,
+  styles: navStyles,
+  withSignOut = false,
+}) {
   const returnTo =
     currentPage === "browse" ? "browse"
       : currentPage === "create" ? "create"
@@ -41,18 +46,25 @@ function TopBarNavAuth({ authenticated, currentPage, setCurrentPage, styles: nav
   }
 
   return (
-    <button
-      type="button"
-      style={{
-        ...navStyles.navAccountIconBtn,
-        ...(currentPage === "account" ? navStyles.navAccountIconBtnActive : null),
-      }}
-      onClick={() => setCurrentPage("account")}
-      aria-label="Account"
-      title="Account"
-    >
-      <CircleUser size={22} strokeWidth={1.75} aria-hidden />
-    </button>
+    <span style={navStyles.navAuthSignedInCluster}>
+      <button
+        type="button"
+        style={{
+          ...navStyles.navAccountIconBtn,
+          ...(currentPage === "account" ? navStyles.navAccountIconBtnActive : null),
+        }}
+        onClick={() => setCurrentPage("account")}
+        aria-label="Account"
+        title="Account"
+      >
+        <CircleUser size={22} strokeWidth={1.75} aria-hidden />
+      </button>
+      {withSignOut ? (
+        <a href="/api/auth/logout" style={navStyles.accountSignOut}>
+          Sign out
+        </a>
+      ) : null}
+    </span>
   );
 }
 
@@ -205,6 +217,22 @@ export default function App() {
     if (currentPage !== "browse") return;
     void refreshGallery();
   }, [currentPage, refreshGallery]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/auth/me", { credentials: "include" });
+        const data = r.ok ? await r.json() : null;
+        if (!cancelled) setAuthenticated(!!data?.authenticated);
+      } catch {
+        if (!cancelled) setAuthenticated(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage]);
 
   // Auto-load featured tree on mount
   useEffect(() => {
@@ -882,7 +910,13 @@ export default function App() {
                 </div>
 
                 <div style={styles.createStepAuthRow}>
-                  <AuthButton onAuthChange={setAuthenticated} returnTo={currentPage} />
+                  <TopBarNavAuth
+                    authenticated={authenticated}
+                    currentPage={currentPage}
+                    setCurrentPage={setCurrentPage}
+                    styles={styles}
+                    withSignOut
+                  />
                 </div>
 
                 <div style={styles.createSecondaryBlock}>
@@ -1508,6 +1542,12 @@ const styles = {
     color: "#14532d",
     boxShadow: "inset 0 0 0 1px rgba(45, 106, 79, 0.35)",
     background: "rgba(45, 106, 79, 0.06)",
+  },
+  navAuthSignedInCluster: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 14,
+    flexWrap: "wrap",
   },
   heroInner: {
     display: "flex",
