@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import TreeRing from "./TreeRing.jsx";
 import GallerySection from "./components/GallerySection.jsx";
 import PrintPanel from "./components/PrintPanel.jsx";
+import PrintCornerOverlay from "./components/PrintCornerOverlay.jsx";
 import LazyDendroStamp from "./components/LazyDendroStamp.jsx";
 import { generateDemoData } from "./github.js";
 import { seedGallery } from "./data/seedGallery.js";
@@ -10,6 +11,10 @@ import { mergeGallerySources } from "./lib/galleryMerge.js";
 import { fetchTreeData, fetchReleaseForRepo } from "./lib/api.js";
 import { githubPRsToRings } from "./lib/adapter.js";
 import { downloadHighResPNG, exportHighResPNG } from "./lib/exportImage.js";
+import {
+  PRINT_CORNER_DEFAULTS,
+  resolvePrintCornerTexts,
+} from "./lib/printCorners.js";
 import {
   Sprout,
   Images,
@@ -156,9 +161,7 @@ export default function App() {
   const [landingGrowHovered, setLandingGrowHovered] = useState(false);
   const [createGrowHovered, setCreateGrowHovered] = useState(false);
   const [growLoadingIdx, setGrowLoadingIdx] = useState(0);
-  const [footerPrintTitle, setFooterPrintTitle] = useState(true);
-  const [footerPrintOrgRepo, setFooterPrintOrgRepo] = useState(false);
-  const [footerPrintReleaseTag, setFooterPrintReleaseTag] = useState(false);
+  const [printCornerSlots, setPrintCornerSlots] = useState(() => ({ ...PRINT_CORNER_DEFAULTS }));
   const [releaseFetchState, setReleaseFetchState] = useState("idle");
   const [releaseDetail, setReleaseDetail] = useState(null);
   const [shareBusy, setShareBusy] = useState(false);
@@ -425,31 +428,37 @@ export default function App() {
     return { owner: dn, repo };
   }, [canExport, displayName, selectedRepo, repoList]);
 
-  const printFooter = useMemo(() => {
-    const title = footerPrintTitle && displayName.trim() ? displayName.trim() : "";
-    const orgRepo =
-      footerPrintOrgRepo && creditTarget
-        ? `${creditTarget.owner} / ${creditTarget.repo}`
-        : "";
-    let releaseTag = "";
-    if (footerPrintReleaseTag && creditTarget) {
-      if (releaseFetchState === "done" && releaseDetail) {
-        releaseTag = releaseDetail.tagName || releaseDetail.name || "";
-      }
-    }
-    return { title, orgRepo, releaseTag };
-  }, [
-    footerPrintTitle,
-    footerPrintOrgRepo,
-    footerPrintReleaseTag,
-    displayName,
-    creditTarget,
-    releaseFetchState,
-    releaseDetail,
-  ]);
+  const printCornerTexts = useMemo(
+    () =>
+      resolvePrintCornerTexts({
+        slots: printCornerSlots,
+        displayName,
+        creditTarget,
+        pullRequests,
+        releaseFetchState,
+        releaseDetail,
+      }),
+    [
+      printCornerSlots,
+      displayName,
+      creditTarget,
+      pullRequests,
+      releaseFetchState,
+      releaseDetail,
+    ],
+  );
+
+  const setPrintCornerSlot = useCallback((id, value) => {
+    setPrintCornerSlots((prev) => ({ ...prev, [id]: value }));
+  }, []);
+
+  const wantsReleaseForPrint = useMemo(
+    () => Object.values(printCornerSlots).some((v) => v === "releaseTag"),
+    [printCornerSlots],
+  );
 
   useEffect(() => {
-    if (!footerPrintReleaseTag || !creditTarget) {
+    if (!wantsReleaseForPrint || !creditTarget) {
       setReleaseFetchState("idle");
       setReleaseDetail(null);
       return;
@@ -481,7 +490,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [footerPrintReleaseTag, creditTarget]);
+  }, [wantsReleaseForPrint, creditTarget]);
 
   useEffect(() => {
     setShareMessage(null);
@@ -591,7 +600,9 @@ export default function App() {
 
   const isMediumUp = viewportWidth >= 900;
   const isLargeUp = viewportWidth >= 1280;
-  const chartSize = isLargeUp ? 520 : (isMediumUp ? 440 : Math.max(240, Math.min(viewportWidth - 56, 340)));
+  /** Outer square frame (matches 1:1 print SKUs); ring is scaled to fit inside. */
+  const printPreviewSheetPx = isLargeUp ? 520 : (isMediumUp ? 440 : Math.max(260, Math.min(viewportWidth - 48, 340)));
+  const createPageRingSize = Math.max(180, Math.round(printPreviewSheetPx * 0.76));
   const starterExamples = useMemo(() => seedGallery.slice(0, 6), []);
   const landingStampEntries = useMemo(() => {
     const source = seedGallery.slice(0, 10);
@@ -743,7 +754,7 @@ export default function App() {
     if (!rings.length) return;
     setExporting(true);
     try {
-      await downloadHighResPNG(rings, {}, printFooter, displayName.replace(/\//g, "-"));
+      await downloadHighResPNG(rings, {}, printCornerTexts, displayName.replace(/\//g, "-"));
     } finally {
       setExporting(false);
     }
@@ -751,7 +762,7 @@ export default function App() {
 
   const handlePrintOrder = async ({ size, paper, total }) => {
     if (!rings.length) return;
-    const blob = await exportHighResPNG(rings, {}, printFooter);
+    const blob = await exportHighResPNG(rings, {}, printCornerTexts);
     // 2. Upload to Vercel Blob
     const uploadRes = await fetch("/api/print/upload-image", {
       method: "POST",
@@ -955,120 +966,55 @@ export default function App() {
               >
                 <div style={styles.createStepHead}>
                   <span style={styles.createStepBadge}>3</span>
-                  <h3 style={styles.createStepTitle}>Print footer</h3>
+                  <h3 style={styles.createStepTitle}>Print labels</h3>
                 </div>
                 <p style={styles.createStepHint}>
                   {canExport
-                    ? "Choose which lines appear under the ring on PNG export and print. Preview updates next to the ring."
+                    ? "Hover or tap a corner on the preview to change what is burned into PNG export and print orders. Default: name top-left, year range top-right, contributions bottom-left."
                     : "Available once you have live data from step 1 (not demo)."}
                 </p>
-                {canExport && (
-                  <div style={styles.createFooterOptions}>
-                    <label style={styles.createFooterOptionRow}>
-                      <input
-                        type="checkbox"
-                        checked={footerPrintTitle}
-                        onChange={(e) => setFooterPrintTitle(e.target.checked)}
-                        style={styles.createReleaseCreditCheckbox}
-                      />
-                      <span>Title (display name)</span>
-                    </label>
-                    {creditTarget && (
-                      <label style={styles.createFooterOptionRow}>
-                        <input
-                          type="checkbox"
-                          checked={footerPrintOrgRepo}
-                          onChange={(e) => setFooterPrintOrgRepo(e.target.checked)}
-                          style={styles.createReleaseCreditCheckbox}
-                        />
-                        <span>
-                          Organization / repo ({creditTarget.owner} / {creditTarget.repo}
-                          {displayName.includes("/") ? "" : " — from filter or busiest repo"})
-                        </span>
-                      </label>
-                    )}
-                    {creditTarget && (
-                      <label style={styles.createFooterOptionRow}>
-                        <input
-                          type="checkbox"
-                          checked={footerPrintReleaseTag}
-                          onChange={(e) => setFooterPrintReleaseTag(e.target.checked)}
-                          style={styles.createReleaseCreditCheckbox}
-                        />
-                        <span>
-                          Latest release tag (
-                          <a
-                            href={`https://github.com/${creditTarget.owner}/${creditTarget.repo}/releases`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={styles.createInlineLink}
-                          >
-                            GitHub releases
-                          </a>
-                          )
-                        </span>
-                      </label>
-                    )}
-                    {footerPrintReleaseTag && creditTarget && (
-                      <p style={styles.createReleaseCreditStatus}>
-                        {releaseFetchState === "loading" && "Fetching release from GitHub…"}
-                        {releaseFetchState === "none" && "No published release — release line will be omitted."}
-                        {releaseFetchState === "error" && "Release lookup failed — release line will be omitted."}
-                        {releaseFetchState === "done" && !releaseDetail && "No release data — line omitted."}
-                      </p>
-                    )}
-                  </div>
+                {canExport && wantsReleaseForPrint && creditTarget && (
+                  <p style={styles.createReleaseCreditStatus}>
+                    {releaseFetchState === "loading" && "Fetching release from GitHub…"}
+                    {releaseFetchState === "none" && "No published release — release corner stays empty on export."}
+                    {releaseFetchState === "error" && "Release lookup failed — release corner stays empty on export."}
+                    {releaseFetchState === "done" && !releaseDetail && "No release data — corner stays empty."}
+                  </p>
                 )}
               </div>
             </div>
           </div>
 
           <div style={styles.createRight}>
-            <div style={styles.createPrintPreviewShell} aria-label="Print preview — ring and footer as exported">
-              <div style={styles.createPrintPreviewRing}>
-                {data && (
-                  <TreeRing
-                    pullRequests={pullRequests}
-                    username={displayName}
-                    repoName={selectedRepo}
-                    size={chartSize}
+            <div
+              style={{
+                ...styles.createPrintPreviewShell,
+                maxWidth: printPreviewSheetPx,
+              }}
+              aria-label="Print preview — ring and corner labels as exported"
+            >
+              <div style={styles.createPrintPreviewRingWrap}>
+                {canExport && data && (
+                  <PrintCornerOverlay
+                    mode="edit"
+                    slots={printCornerSlots}
+                    onSlotChange={setPrintCornerSlot}
+                    cornerTexts={printCornerTexts}
+                    releaseFetchState={releaseFetchState}
                   />
                 )}
-                {loading && <div style={styles.loadingOverlay}>Loading…</div>}
-              </div>
-              {canExport && (footerPrintTitle || footerPrintOrgRepo || footerPrintReleaseTag) && (
-                <div style={styles.createPrintPreviewFooter}>
-                  {footerPrintTitle && (
-                    <div style={styles.printFooterPreviewTitle}>{displayName}</div>
+                <div style={styles.createPrintPreviewRing}>
+                  {data && (
+                    <TreeRing
+                      pullRequests={pullRequests}
+                      username={displayName}
+                      repoName={selectedRepo}
+                      size={createPageRingSize}
+                    />
                   )}
-                  {footerPrintOrgRepo && creditTarget && (
-                    <div style={styles.printFooterPreviewOrg}>
-                      {creditTarget.owner} / {creditTarget.repo}
-                    </div>
-                  )}
-                  {footerPrintReleaseTag && creditTarget && (
-                    <>
-                      {releaseFetchState === "loading" && (
-                        <div style={styles.printFooterPreviewMuted}>Loading release…</div>
-                      )}
-                      {releaseFetchState === "done" && (releaseDetail?.tagName || releaseDetail?.name) && (
-                        <div style={styles.printFooterPreviewRelease}>
-                          {releaseDetail.tagName || releaseDetail.name}
-                        </div>
-                      )}
-                      {(releaseFetchState === "none"
-                        || releaseFetchState === "error"
-                        || (releaseFetchState === "done"
-                          && !(releaseDetail?.tagName || releaseDetail?.name))) && (
-                        <div style={styles.printFooterPreviewMuted}>No release tag</div>
-                      )}
-                    </>
-                  )}
-                  <div style={styles.printFooterPreviewSub}>
-                    {pullRequests.length} contributions · dendrochronology
-                  </div>
+                  {loading && <div style={styles.loadingOverlay}>Loading…</div>}
                 </div>
-              )}
+              </div>
             </div>
             <div style={styles.createActionsRowBelowViz}>
               <button
@@ -1370,9 +1316,9 @@ export default function App() {
             pullRequests,
             username: displayName,
             repoName: selectedRepo,
-            size: Math.round(Math.min(340, chartSize)),
+            size: Math.round(Math.min(340, createPageRingSize)),
           }}
-          printFooter={printFooter}
+          printCornerTexts={printCornerTexts}
         />
       )}
 
@@ -1955,26 +1901,6 @@ const styles = {
     color: "#2563eb",
     textUnderlineOffset: 2,
   },
-  createFooterOptions: {
-    marginTop: 4,
-    padding: "12px 14px",
-    background: "#fafafa",
-    border: "1px solid #e4e4e7",
-    borderRadius: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  },
-  createFooterOptionRow: {
-    display: "flex",
-    gap: 10,
-    alignItems: "flex-start",
-    fontSize: 13,
-    lineHeight: 1.55,
-    color: "#3f3f46",
-    cursor: "pointer",
-    margin: 0,
-  },
   createActionsRow: {
     display: "flex",
     flexWrap: "wrap",
@@ -2097,63 +2023,39 @@ const styles = {
     lineHeight: 1.45,
   },
   createPrintPreviewShell: {
-    minWidth: 0,
-    border: "1px solid #e4e4e7",
+    width: "100%",
+    marginLeft: "auto",
+    marginRight: "auto",
+    aspectRatio: "1 / 1",
+    border: "1px solid #c4bcb2",
     borderRadius: 0,
     background: "#f5f0eb",
     boxSizing: "border-box",
     overflow: "hidden",
     position: "relative",
-    boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.35)",
+    boxShadow:
+      "0 16px 36px rgba(15, 15, 15, 0.1), 0 4px 12px rgba(15, 15, 15, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.45)",
+  },
+  createPrintPreviewRingWrap: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 0,
   },
   createPrintPreviewRing: {
-    minHeight: 300,
+    flex: "1 1 auto",
+    width: "100%",
+    height: "100%",
+    minHeight: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
-    padding: "20px 16px",
-    background: "#f5f0eb",
+    padding: "clamp(10px, 3.5%, 24px)",
+    background: "transparent",
     boxSizing: "border-box",
-  },
-  createPrintPreviewFooter: {
-    borderTop: "1px solid #ddd2c4",
-    padding: "14px 16px 16px",
-    textAlign: "center",
-    background: "#f5f0eb",
-    boxSizing: "border-box",
-  },
-  printFooterPreviewTitle: {
-    fontSize: 15,
-    fontWeight: 600,
-    color: "#7a6a58",
-    marginTop: 0,
-    marginBottom: 6,
-    lineHeight: 1.3,
-  },
-  printFooterPreviewOrg: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#5c4d3f",
-    marginBottom: 4,
-  },
-  printFooterPreviewRelease: {
-    fontSize: 12,
-    fontWeight: 600,
-    color: "#4a3f35",
-    marginBottom: 4,
-  },
-  printFooterPreviewMuted: {
-    fontSize: 12,
-    color: "#a1a1aa",
-    marginBottom: 4,
-  },
-  printFooterPreviewSub: {
-    fontSize: 11,
-    color: "#a89888",
-    marginTop: 6,
-    paddingTop: 8,
-    borderTop: "1px solid rgba(228, 228, 231, 0.85)",
   },
   createActionsRowBelowViz: {
     display: "flex",
@@ -2443,10 +2345,16 @@ const styles = {
   },
   loadingOverlay: {
     position: "absolute",
+    inset: 0,
+    zIndex: 4,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     fontSize: 14,
     color: "#998877",
     fontWeight: 300,
     letterSpacing: 2,
+    background: "rgba(245, 240, 235, 0.72)",
   },
   demoHint: {
     fontSize: 11,

@@ -6,31 +6,53 @@ import { drawDendroRings } from "dendrochronology-visualizer";
 const PRINT_SIZE = 4000;
 
 /**
- * @param {object} footer
- * @param {string} [footer.title] - Main label (e.g. display name)
- * @param {string} [footer.orgRepo] - e.g. owner / repo
- * @param {string} [footer.releaseTag] - e.g. v1.2.0
+ * @param {object} cornerTexts
+ * @param {string} [cornerTexts.tl]
+ * @param {string} [cornerTexts.tr]
+ * @param {string} [cornerTexts.bl]
+ * @param {string} [cornerTexts.br]
  */
-export async function exportHighResPNG(rings, opts = {}, footer = {}) {
-  const title = footer.title || "";
-  const orgRepo = footer.orgRepo || "";
-  const releaseTag = footer.releaseTag || "";
-  const creditLines = [title, orgRepo, releaseTag].filter(Boolean);
-  const hasCreditLines = creditLines.length > 0;
+function drawCornerLabels(ctx, size, cornerTexts) {
+  const { tl = "", tr = "", bl = "", br = "" } = cornerTexts || {};
+  if (!tl && !tr && !bl && !br) return;
 
-  let footerH = 0;
-  if (hasCreditLines) {
-    footerH = 52;
-    if (title) footerH += 44;
-    if (orgRepo) footerH += 40;
-    if (releaseTag) footerH += 38;
-    footerH += 36;
+  const m = Math.round(size * 0.02);
+  const fontPx = Math.round(size * 0.0075);
+  const line = Math.max(18, Math.min(34, fontPx));
+
+  ctx.fillStyle = "#5c4d3f";
+  ctx.font = `500 ${line}px Inter, -apple-system, sans-serif`;
+
+  if (tl) {
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(tl, m, m);
   }
+  if (tr) {
+    ctx.textAlign = "right";
+    ctx.textBaseline = "top";
+    ctx.fillText(tr, size - m, m);
+  }
+  if (bl) {
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(bl, m, size - m);
+  }
+  if (br) {
+    ctx.textAlign = "right";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(br, size - m, size - m);
+  }
+}
 
+/**
+ * @param {object} [cornerTexts] - optional labels placed near the four corners of the ring
+ */
+export async function exportHighResPNG(rings, opts = {}, cornerTexts = {}) {
   const canvas = document.createElement("canvas");
   const size = PRINT_SIZE;
   canvas.width = size;
-  canvas.height = size + footerH;
+  canvas.height = size;
 
   const ctx = canvas.getContext("2d");
 
@@ -38,41 +60,15 @@ export async function exportHighResPNG(rings, opts = {}, footer = {}) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   drawDendroRings(ctx, rings, { ...opts, size });
-
-  if (hasCreditLines) {
-    ctx.textAlign = "center";
-    let y = size + 48;
-    if (title) {
-      ctx.fillStyle = "#b0a090";
-      ctx.font = "300 32px Inter, -apple-system, sans-serif";
-      ctx.fillText(title, size / 2, y);
-      y += 44;
-    }
-    if (orgRepo) {
-      ctx.fillStyle = "#7a6a58";
-      ctx.font = "500 24px Inter, -apple-system, sans-serif";
-      ctx.fillText(orgRepo, size / 2, y);
-      y += 40;
-    }
-    if (releaseTag) {
-      ctx.fillStyle = "#6b5c4c";
-      ctx.font = "500 22px Inter, -apple-system, sans-serif";
-      const tagText = releaseTag.startsWith("v") || releaseTag.startsWith("V") ? releaseTag : `· ${releaseTag}`;
-      ctx.fillText(tagText, size / 2, y);
-      y += 38;
-    }
-    ctx.fillStyle = "#d4c8b8";
-    ctx.font = "300 20px Inter, -apple-system, sans-serif";
-    ctx.fillText(`${rings.length} contributions · dendrochronology`, size / 2, y);
-  }
+  drawCornerLabels(ctx, size, cornerTexts);
 
   return new Promise((resolve) => {
     canvas.toBlob(resolve, "image/png");
   });
 }
 
-export async function downloadHighResPNG(rings, opts = {}, footer = {}, filename = "tree-ring") {
-  const blob = await exportHighResPNG(rings, opts, footer);
+export async function downloadHighResPNG(rings, opts = {}, cornerTexts = {}, filename = "tree-ring") {
+  const blob = await exportHighResPNG(rings, opts, cornerTexts);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

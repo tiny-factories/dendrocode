@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import TreeRing from "../TreeRing.jsx";
+import PrintCornerOverlay from "./PrintCornerOverlay.jsx";
 
 const SIZES = [
   { id: "12x12", label: '12×12"', sku: "GLOBAL-FAP-12x12", price: 49 },
@@ -12,8 +13,8 @@ const PAPERS = [
   { id: "hahnemuhle", label: "Hahnemühle German Etching", surcharge: 30 },
 ];
 
-/** Size / paper / checkout; optional live ring + footer preview before payment. */
-export default function PrintPanel({ onClose, onOrder, displayName, ringPreview, printFooter }) {
+/** Size / paper / checkout; optional live ring + corner label preview before payment. */
+export default function PrintPanel({ onClose, onOrder, displayName, ringPreview, printCornerTexts = {} }) {
   const [size, setSize] = useState(SIZES[1]);
   const [paper, setPaper] = useState(PAPERS[0]);
   const [ordering, setOrdering] = useState(false);
@@ -45,6 +46,7 @@ export default function PrintPanel({ onClose, onOrder, displayName, ringPreview,
           <div style={styles.previewBlock}>
             <div style={styles.previewLabel}>What you’re ordering</div>
             <div style={styles.previewViz}>
+              <PrintCornerOverlay mode="read" cornerTexts={printCornerTexts} />
               <TreeRing
                 pullRequests={ringPreview.pullRequests}
                 username={ringPreview.username || displayName}
@@ -52,22 +54,6 @@ export default function PrintPanel({ onClose, onOrder, displayName, ringPreview,
                 size={ringPreview.size ?? 300}
               />
             </div>
-            {printFooter && (printFooter.title || printFooter.orgRepo || printFooter.releaseTag) && (
-              <div style={styles.previewFooter}>
-                {printFooter.title ? (
-                  <div style={styles.previewFooterTitle}>{printFooter.title}</div>
-                ) : null}
-                {printFooter.orgRepo ? (
-                  <div style={styles.previewFooterLine}>{printFooter.orgRepo}</div>
-                ) : null}
-                {printFooter.releaseTag ? (
-                  <div style={styles.previewFooterLine}>{printFooter.releaseTag}</div>
-                ) : null}
-                <div style={styles.previewFooterMeta}>
-                  {ringPreview.pullRequests.length} contributions · included on exported PNG
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -167,29 +153,8 @@ const styles = {
     alignItems: "center",
     padding: "12px 12px 16px",
     background: "#fffcf8",
-  },
-  previewFooter: {
-    borderTop: "1px solid #ede4d8",
-    padding: "12px 16px 14px",
-    textAlign: "center",
-    background: "rgba(245, 240, 235, 0.9)",
-  },
-  previewFooterTitle: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: "#7a6a58",
-    marginBottom: 4,
-  },
-  previewFooterLine: {
-    fontSize: 12,
-    fontWeight: 500,
-    color: "#5c4d3f",
-    lineHeight: 1.35,
-  },
-  previewFooterMeta: {
-    marginTop: 8,
-    fontSize: 11,
-    color: "#a89888",
+    position: "relative",
+    minHeight: 120,
   },
   header: {
     display: "flex",
