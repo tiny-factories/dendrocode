@@ -1,6 +1,6 @@
 /**
  * Server-only GitHub tree fetch helpers (no KV).
- * Used by /api/tree and weekly gallery refresh cron.
+ * Lives at api/githubTreeServer.js so Vercel resolves imports from api/tree/* reliably.
  */
 
 export const API = "https://api.github.com";
@@ -89,7 +89,7 @@ export async function fetchUserPRs(username, token) {
  * @param {string} owner
  * @param {string} repo
  * @param {string} [token]
- * @param {{ maxMerged?: number }} [opts] - cap merged PRs (and detail fetches) for batch jobs
+ * @param {{ maxMerged?: number }} [opts]
  */
 export async function fetchRepoPRs(owner, repo, token, opts = {}) {
   const { maxMerged } = opts;

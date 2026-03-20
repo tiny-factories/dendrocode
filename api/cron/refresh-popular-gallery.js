@@ -5,7 +5,7 @@
  * Uses one server GITHUB_TOKEN burst per run; visitors then read KV (no GitHub) for those slugs.
  */
 
-import { fetchRepoPRs } from "../_lib/githubTreeServer.js";
+import { fetchRepoPRs } from "../githubTreeServer.js";
 
 let kv;
 try {
