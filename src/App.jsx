@@ -659,7 +659,7 @@ export default function App() {
                 </div>
 
                 <div style={styles.createStepAuthRow}>
-                  <AuthButton onAuthChange={setAuthenticated} />
+                  <AuthButton onAuthChange={setAuthenticated} returnTo={currentPage} />
                 </div>
 
                 <div style={styles.createSecondaryBlock}>
