@@ -22,14 +22,8 @@ import {
   CircleUser,
 } from "lucide-react";
 
-/** Browse / Create / Account: Sign in link, or account icon (+ optional Sign out in forms). */
-function TopBarNavAuth({
-  authenticated,
-  currentPage,
-  setCurrentPage,
-  styles: navStyles,
-  withSignOut = false,
-}) {
+/** Browse / Create / Account top bar: Sign in link, or account icon when authenticated. */
+function TopBarNavAuth({ authenticated, currentPage, setCurrentPage, styles: navStyles }) {
   const returnTo =
     currentPage === "browse" ? "browse"
       : currentPage === "create" ? "create"
@@ -46,25 +40,18 @@ function TopBarNavAuth({
   }
 
   return (
-    <span style={navStyles.navAuthSignedInCluster}>
-      <button
-        type="button"
-        style={{
-          ...navStyles.navAccountIconBtn,
-          ...(currentPage === "account" ? navStyles.navAccountIconBtnActive : null),
-        }}
-        onClick={() => setCurrentPage("account")}
-        aria-label="Account"
-        title="Account"
-      >
-        <CircleUser size={22} strokeWidth={1.75} aria-hidden />
-      </button>
-      {withSignOut ? (
-        <a href="/api/auth/logout" style={navStyles.accountSignOut}>
-          Sign out
-        </a>
-      ) : null}
-    </span>
+    <button
+      type="button"
+      style={{
+        ...navStyles.navAccountIconBtn,
+        ...(currentPage === "account" ? navStyles.navAccountIconBtnActive : null),
+      }}
+      onClick={() => setCurrentPage("account")}
+      aria-label="Account"
+      title="Account"
+    >
+      <CircleUser size={22} strokeWidth={1.75} aria-hidden />
+    </button>
   );
 }
 
@@ -141,7 +128,6 @@ const landingScrollbarHideStyles = `
 export default function App() {
   const [inputValue, setInputValue] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [token, setToken] = useState("");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -246,7 +232,7 @@ export default function App() {
         return;
       }
       try {
-        const result = await fetchTreeData("user", "gndclouds", undefined);
+        const result = await fetchTreeData("user", "gndclouds");
         if (!cancelled) {
           if (result.pullRequests.length > 0) {
             setData(result);
@@ -350,10 +336,10 @@ export default function App() {
         if (parts.length !== 2 || !parts[0] || !parts[1]) {
           throw new Error('Enter a repo as "owner/repo" (e.g. facebook/react)');
         }
-        result = await fetchTreeData("repo", clean, token || undefined);
+        result = await fetchTreeData("repo", clean);
         setDisplayName(clean);
       } else {
-        result = await fetchTreeData("user", clean, token || undefined);
+        result = await fetchTreeData("user", clean);
         setDisplayName(clean);
       }
       setData(result);
@@ -378,7 +364,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -473,7 +459,7 @@ export default function App() {
       setReleaseFetchState("loading");
       setReleaseDetail(null);
       try {
-        const out = await fetchReleaseForRepo(creditTarget.owner, creditTarget.repo, token || undefined);
+        const out = await fetchReleaseForRepo(creditTarget.owner, creditTarget.repo);
         if (cancelled) return;
         if (!out.ok) {
           setReleaseFetchState("error");
@@ -495,7 +481,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [footerPrintReleaseTag, creditTarget, token]);
+  }, [footerPrintReleaseTag, creditTarget]);
 
   useEffect(() => {
     setShareMessage(null);
@@ -909,32 +895,6 @@ export default function App() {
                   ))}
                 </div>
 
-                <div style={styles.createStepAuthRow}>
-                  <TopBarNavAuth
-                    authenticated={authenticated}
-                    currentPage={currentPage}
-                    setCurrentPage={setCurrentPage}
-                    styles={styles}
-                    withSignOut
-                  />
-                </div>
-
-                <div style={styles.createSecondaryBlock}>
-                  <details style={styles.advancedDetails}>
-                    <summary style={styles.tokenToggleCreate}>Advanced (token)</summary>
-                    <p style={styles.createTokenHint}>
-                      Sign in with GitHub uses your token on <strong>this app’s server</strong> ( /api ). Paste a PAT here only
-                      if you need browser-direct GitHub access—for example <strong>local Vite</strong> without API routes.
-                    </p>
-                    <input
-                      type="password"
-                      value={token}
-                      onChange={(e) => setToken(e.target.value)}
-                      placeholder="ghp_…"
-                      style={styles.createTokenInput}
-                    />
-                  </details>
-                </div>
               </div>
 
               <div
@@ -1064,21 +1024,20 @@ export default function App() {
           </div>
 
           <div style={styles.createRight}>
-            <div style={styles.vizAreaCreate}>
-              {data && (
-                <TreeRing
-                  pullRequests={pullRequests}
-                  username={displayName}
-                  repoName={selectedRepo}
-                  size={chartSize}
-                />
-              )}
-              {loading && <div style={styles.loadingOverlay}>Loading…</div>}
-            </div>
-            {canExport && (footerPrintTitle || footerPrintOrgRepo || footerPrintReleaseTag) && (
-              <div style={styles.printFooterPreviewWrap} aria-label="Print footer preview">
-                <div style={styles.printFooterPreviewLabel}>Print footer</div>
-                <div style={styles.printFooterPreviewPaper}>
+            <div style={styles.createPrintPreviewShell} aria-label="Print preview — ring and footer as exported">
+              <div style={styles.createPrintPreviewRing}>
+                {data && (
+                  <TreeRing
+                    pullRequests={pullRequests}
+                    username={displayName}
+                    repoName={selectedRepo}
+                    size={chartSize}
+                  />
+                )}
+                {loading && <div style={styles.loadingOverlay}>Loading…</div>}
+              </div>
+              {canExport && (footerPrintTitle || footerPrintOrgRepo || footerPrintReleaseTag) && (
+                <div style={styles.createPrintPreviewFooter}>
                   {footerPrintTitle && (
                     <div style={styles.printFooterPreviewTitle}>{displayName}</div>
                   )}
@@ -1109,8 +1068,8 @@ export default function App() {
                     {pullRequests.length} contributions · dendrochronology
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
             <div style={styles.createActionsRowBelowViz}>
               <button
                 type="button"
@@ -1543,12 +1502,6 @@ const styles = {
     boxShadow: "inset 0 0 0 1px rgba(45, 106, 79, 0.35)",
     background: "rgba(45, 106, 79, 0.06)",
   },
-  navAuthSignedInCluster: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 14,
-    flexWrap: "wrap",
-  },
   heroInner: {
     display: "flex",
     flexDirection: "column",
@@ -1953,13 +1906,6 @@ const styles = {
     background: "#f4f4f5",
     padding: "1px 5px",
   },
-  createStepAuthRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 2,
-  },
   createForm: {
     width: "100%",
     margin: 0,
@@ -2097,39 +2043,6 @@ const styles = {
     cursor: "pointer",
     fontFamily: "inherit",
   },
-  createSecondaryBlock: {
-    marginTop: -4,
-  },
-  tokenToggleCreate: {
-    background: "none",
-    border: "none",
-    color: "#71717a",
-    cursor: "pointer",
-    fontSize: 12,
-    textAlign: "left",
-    fontFamily: "inherit",
-    padding: 0,
-  },
-  createTokenHint: {
-    margin: "0 0 10px",
-    fontSize: 12,
-    lineHeight: 1.5,
-    color: "#71717a",
-  },
-  createTokenInput: {
-    marginTop: 10,
-    width: "100%",
-    maxWidth: 280,
-    padding: "10px 12px",
-    fontSize: 12,
-    border: "1px solid #e4e4e7",
-    borderRadius: 0,
-    background: "#fafafa",
-    color: "#18181b",
-    outline: "none",
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    boxSizing: "border-box",
-  },
   starterRowCreate: {
     display: "flex",
     flexWrap: "wrap",
@@ -2183,41 +2096,38 @@ const styles = {
     margin: 0,
     lineHeight: 1.45,
   },
-  vizAreaCreate: {
-    minHeight: 300,
+  createPrintPreviewShell: {
     minWidth: 0,
+    border: "1px solid #e4e4e7",
+    borderRadius: 0,
+    background: "#f5f0eb",
+    boxSizing: "border-box",
+    overflow: "hidden",
+    position: "relative",
+    boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.35)",
+  },
+  createPrintPreviewRing: {
+    minHeight: 300,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
-    background: "#ffffff",
-    border: "1px solid #e4e4e7",
-    borderRadius: 0,
     padding: "20px 16px",
-    overflow: "hidden",
+    background: "#f5f0eb",
     boxSizing: "border-box",
   },
-  printFooterPreviewWrap: {
-    marginTop: 4,
-  },
-  printFooterPreviewLabel: {
-    fontSize: 11,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
-    color: "rgba(82, 82, 91, 0.85)",
-    marginBottom: 6,
-  },
-  printFooterPreviewPaper: {
-    background: "#f5f0eb",
-    border: "1px solid #e4e4e7",
-    borderRadius: 0,
-    padding: "14px 16px 12px",
+  createPrintPreviewFooter: {
+    borderTop: "1px solid #ddd2c4",
+    padding: "14px 16px 16px",
     textAlign: "center",
+    background: "#f5f0eb",
+    boxSizing: "border-box",
   },
   printFooterPreviewTitle: {
     fontSize: 15,
     fontWeight: 600,
     color: "#7a6a58",
+    marginTop: 0,
     marginBottom: 6,
     lineHeight: 1.3,
   },
@@ -2250,7 +2160,7 @@ const styles = {
     flexWrap: "wrap",
     alignItems: "center",
     gap: 10,
-    marginTop: 4,
+    marginTop: 14,
   },
   createShareBlockBelowViz: {
     marginTop: 12,
@@ -2430,19 +2340,6 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     flexWrap: "wrap",
-  },
-  tokenToggle: {
-    background: "none",
-    border: "none",
-    color: "#b0a090",
-    cursor: "pointer",
-    fontSize: 12,
-    textAlign: "left",
-    fontFamily: "inherit",
-    padding: 0,
-  },
-  advancedDetails: {
-    marginTop: 2,
   },
   starterRow: {
     display: "flex",

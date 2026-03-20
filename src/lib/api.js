@@ -1,12 +1,14 @@
 /**
- * Client-side API wrapper with fallback chain:
+ * Client-side API wrapper:
  * 1. localStorage cache (if fresh)
- * 2. /api/tree/:slug (credentials included — OAuth gh_token applies on server)
- * 3. Browser → GitHub only with a PAT, or anonymous only in vite dev
+ * 2. /api/tree/:slug (credentials: include — signed-in users send gh_token; server uses OAuth or GITHUB_TOKEN)
+ *
+ * If `vite` alone (no /api), dev falls back to unauthenticated browser → GitHub (strict rate limits).
+ * Use `vercel dev` + sign in for realistic limits locally.
  */
 
 import { getCache, setCache, isFresh } from "./cache.js";
-import { fetchPullRequests, fetchRepoPullRequests, fetchLatestRelease } from "../github.js";
+import { fetchPullRequests, fetchRepoPullRequests } from "../github.js";
 
 function looksLikeNetworkFailure(e) {
   return (
@@ -19,10 +21,9 @@ function looksLikeNetworkFailure(e) {
  * Fetch tree ring data with layered caching.
  * @param {"user"|"repo"} mode
  * @param {string} value - username or "owner/repo"
- * @param {string} [token] - Personal access token for browser-only fallback
  * @returns {Promise<{ pullRequests: Array, repos?: Array }>}
  */
-export async function fetchTreeData(mode, value, token) {
+export async function fetchTreeData(mode, value) {
   const slug = mode === "repo" ? `repo:${value.replace("/", ":")}` : `user:${value}`;
 
   if (isFresh(slug)) {
@@ -58,14 +59,7 @@ export async function fetchTreeData(mode, value, token) {
   }
 
   let result;
-  if (token) {
-    if (mode === "repo") {
-      const [owner, repo] = value.split("/");
-      result = await fetchRepoPullRequests(owner, repo, token);
-    } else {
-      result = await fetchPullRequests(value, token);
-    }
-  } else if (import.meta.env.DEV) {
+  if (import.meta.env.DEV) {
     if (mode === "repo") {
       const [owner, repo] = value.split("/");
       result = await fetchRepoPullRequests(owner, repo, undefined);
@@ -74,7 +68,7 @@ export async function fetchTreeData(mode, value, token) {
     }
   } else {
     throw new Error(
-      "Could not reach the data API from this page. On the deployed app, sign in with GitHub so /api/tree can use your session token, or paste a Personal Access Token under Advanced. Your sign-in cookie is not visible to code that talks directly to api.github.com from the browser.",
+      "Could not load tree data. Sign in with GitHub (top bar) so requests go through the app’s server with your token—much higher GitHub rate limits than anonymous access.",
     );
   }
 
@@ -83,10 +77,10 @@ export async function fetchTreeData(mode, value, token) {
 }
 
 /**
- * Latest release — server route uses OAuth cookie or GITHUB_TOKEN.
- * @returns {{ ok: boolean, release: object|null }} ok false = hard failure; release null = no published release
+ * Latest release — /api/github/release-latest (OAuth cookie or server GITHUB_TOKEN).
+ * @returns {{ ok: boolean, release: object|null }}
  */
-export async function fetchReleaseForRepo(owner, repo, pat) {
+export async function fetchReleaseForRepo(owner, repo) {
   try {
     const res = await fetch(
       `/api/github/release-latest?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
@@ -96,20 +90,8 @@ export async function fetchReleaseForRepo(owner, repo, pat) {
       const data = await res.json();
       return { ok: true, release: data.release ?? null };
     }
-    if (pat) {
-      const release = await fetchLatestRelease(owner, repo, pat);
-      return { ok: true, release };
-    }
     return { ok: false, release: null };
   } catch {
-    if (pat) {
-      try {
-        const release = await fetchLatestRelease(owner, repo, pat);
-        return { ok: true, release };
-      } catch {
-        return { ok: false, release: null };
-      }
-    }
     return { ok: false, release: null };
   }
 }
