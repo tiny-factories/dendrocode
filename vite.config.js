@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
-const libPath = path.resolve(__dirname, "../dendrochronology-visualizer/src");
+const libPath = path.resolve(__dirname, "vendor/dendrochronology-visualizer/src");
 
 export default defineConfig({
   plugins: [react()],
