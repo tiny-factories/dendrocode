@@ -30,12 +30,14 @@ export default async function handler(req, res) {
       slugs.map(async (slug) => {
         try {
           const data = await kv.get(`tree:${slug}`);
-          if (!data) return null;
+          if (!data || !Array.isArray(data.pullRequests) || !data.pullRequests.length) return null;
           return {
             slug,
             displayName: data.displayName,
-            prCount: data.prCount || data.pullRequests?.length || 0,
+            prCount: data.prCount || data.pullRequests.length,
             cachedAt: data.cachedAt,
+            category: data.category || (data.sharedToGallery ? "community" : undefined),
+            pullRequests: data.pullRequests,
           };
         } catch {
           return null;

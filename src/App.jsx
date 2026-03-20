@@ -7,6 +7,7 @@ import LazyDendroStamp from "./components/LazyDendroStamp.jsx";
 import { generateDemoData } from "./github.js";
 import { seedGallery } from "./data/seedGallery.js";
 import { getCache, setCache, addGalleryEntry, getGalleryEntries } from "./lib/cache.js";
+import { mergeGallerySources } from "./lib/galleryMerge.js";
 import { fetchTreeData, fetchReleaseForRepo } from "./lib/api.js";
 import { githubPRsToRings } from "./lib/adapter.js";
 import { downloadHighResPNG, exportHighResPNG } from "./lib/exportImage.js";
@@ -19,6 +20,7 @@ import {
   Footprints,
   TreeDeciduous,
   Sun,
+  Share2,
 } from "lucide-react";
 
 const GITHUB_PATH_SKIP_SECOND = new Set([
@@ -100,7 +102,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [selectedRepo, setSelectedRepo] = useState(null);
   const [galleryEntries, setGalleryEntries] = useState([]);
-  const [, setAuthenticated] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
   const [showPrintPanel, setShowPrintPanel] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [hoveredStamp, setHoveredStamp] = useState(null);
@@ -123,22 +125,28 @@ export default function App() {
   const [releaseCreditOn, setReleaseCreditOn] = useState(false);
   const [releaseFetchState, setReleaseFetchState] = useState("idle");
   const [releaseDetail, setReleaseDetail] = useState(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareMessage, setShareMessage] = useState(null);
 
-  // Merge seed + localStorage gallery entries
-  useEffect(() => {
+  const refreshGallery = useCallback(async () => {
     const stored = getGalleryEntries();
-    const allSlugs = new Set();
-    const merged = [];
-    // Stored entries first (community additions)
-    for (const e of stored) {
-      if (!allSlugs.has(e.slug)) { allSlugs.add(e.slug); merged.push(e); }
+    let server = [];
+    try {
+      const r = await fetch("/api/gallery?limit=50", { credentials: "include" });
+      if (r.ok) {
+        const j = await r.json();
+        server = j.entries || [];
+      }
+    } catch {
+      /* offline or no KV */
     }
-    // Then seed entries
-    for (const e of seedGallery) {
-      if (!allSlugs.has(e.slug)) { allSlugs.add(e.slug); merged.push(e); }
-    }
-    setGalleryEntries(merged);
+    setGalleryEntries(mergeGallerySources(server, stored, seedGallery));
   }, []);
+
+  useEffect(() => {
+    if (currentPage !== "browse") return;
+    void refreshGallery();
+  }, [currentPage, refreshGallery]);
 
   // Auto-load featured tree on mount
   useEffect(() => {
@@ -303,6 +311,13 @@ export default function App() {
   const hasRingData = pullRequests.length > 0;
   const canExport = hasRingData && displayName !== "demo";
 
+  const currentGallerySlug = useMemo(() => {
+    if (!canExport) return null;
+    const dn = displayName.trim();
+    if (dn.includes("/")) return `repo:${dn.replace("/", ":")}`;
+    return `user:${dn}`;
+  }, [canExport, displayName]);
+
   const creditTarget = useMemo(() => {
     if (!canExport) return null;
     const dn = displayName.trim();
@@ -359,6 +374,10 @@ export default function App() {
       cancelled = true;
     };
   }, [releaseCreditOn, creditTarget, token]);
+
+  useEffect(() => {
+    setShareMessage(null);
+  }, [currentGallerySlug, displayName]);
 
   const isMediumUp = viewportWidth >= 900;
   const isLargeUp = viewportWidth >= 1280;
@@ -550,6 +569,39 @@ export default function App() {
     window.location.href = url;
   };
 
+  const handleShareToGallery = useCallback(async () => {
+    if (!currentGallerySlug || !pullRequests.length || !authenticated) return;
+    setShareBusy(true);
+    setShareMessage(null);
+    try {
+      const res = await fetch("/api/gallery/share", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: currentGallerySlug,
+          displayName: displayName.trim(),
+          pullRequests,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(j.error || `Share failed (${res.status})`);
+      }
+      addGalleryEntry({
+        slug: currentGallerySlug,
+        displayName: displayName.trim(),
+        prCount: pullRequests.length,
+      });
+      setShareMessage("Published — open Browse to see it in the gallery.");
+      await refreshGallery();
+    } catch (e) {
+      setShareMessage(`Error — ${e.message || "could not share"}`);
+    } finally {
+      setShareBusy(false);
+    }
+  }, [authenticated, currentGallerySlug, displayName, pullRequests, refreshGallery]);
+
   const GrowLoadingIcon = GROW_LOADING_SEQUENCE[growLoadingIdx];
 
   return (
@@ -568,7 +620,7 @@ export default function App() {
           </div>
           <div style={styles.galleryLead}>
             <h2 style={styles.galleryTitle}>Browse Gallery</h2>
-            <p style={styles.gallerySub}>Explore curated examples, then load one into the tool.</p>
+            <p style={styles.gallerySub}>Curated examples, community shares, and your local recents—open one in Create.</p>
           </div>
           <GallerySection
             entries={galleryEntries}
@@ -804,6 +856,40 @@ export default function App() {
                     Order Print
                   </button>
                 </div>
+                {canExport && (
+                  <div style={styles.createShareBlock}>
+                    <button
+                      type="button"
+                      style={styles.createShareBtn}
+                      onClick={handleShareToGallery}
+                      disabled={!authenticated || shareBusy}
+                    >
+                      {shareBusy ? (
+                        "Publishing…"
+                      ) : (
+                        <>
+                          <Share2 size={16} strokeWidth={2} aria-hidden style={{ marginRight: 8 }} />
+                          Share on Browse
+                        </>
+                      )}
+                    </button>
+                    <p style={styles.createShareHint}>
+                      {authenticated
+                        ? "Saves the ring you see now (including repo filter) to the shared gallery in Vercel KV for everyone on Browse."
+                        : "Sign in with GitHub to publish this tree to the public Browse gallery."}
+                    </p>
+                    {shareMessage && (
+                      <p
+                        style={{
+                          ...styles.createShareMessage,
+                          ...(shareMessage.startsWith("Error") ? styles.createShareMessageErr : null),
+                        }}
+                      >
+                        {shareMessage}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1541,6 +1627,46 @@ const styles = {
     flexWrap: "wrap",
     alignItems: "center",
     gap: 10,
+  },
+  createShareBlock: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTop: "1px solid #e4e4e7",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  createShareBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "8px 16px",
+    fontSize: 13,
+    fontWeight: 500,
+    borderRadius: 0,
+    border: "1px solid #2d6a4f",
+    background: "#f0fdf4",
+    color: "#14532d",
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  createShareHint: {
+    margin: 0,
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "#71717a",
+    maxWidth: 420,
+  },
+  createShareMessage: {
+    margin: 0,
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: "#166534",
+    fontWeight: 500,
+  },
+  createShareMessageErr: {
+    color: "#b45309",
+    fontWeight: 400,
   },
   createSecondaryBtn: {
     padding: "8px 16px",
