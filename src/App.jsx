@@ -3,6 +3,7 @@ import TreeRing from "./TreeRing.jsx";
 import GallerySection from "./components/GallerySection.jsx";
 import PrintPanel from "./components/PrintPanel.jsx";
 import PrintCornerOverlay from "./components/PrintCornerOverlay.jsx";
+import PrintProductMockup from "./components/PrintProductMockup.jsx";
 import LazyDendroStamp from "./components/LazyDendroStamp.jsx";
 import { generateDemoData } from "./github.js";
 import { seedGallery } from "./data/seedGallery.js";
@@ -15,6 +16,13 @@ import {
   PRINT_CORNER_DEFAULTS,
   resolvePrintCornerTexts,
 } from "./lib/printCorners.js";
+import {
+  PRINT_PAPERS,
+  PRINT_SIZES,
+  dendroDrawOptionsForPrint,
+  exportCanvasPixelsForPrintSize,
+  previewSheetPxForPrint,
+} from "./lib/printCatalog.js";
 import {
   Sprout,
   Images,
@@ -162,6 +170,8 @@ export default function App() {
   const [createGrowHovered, setCreateGrowHovered] = useState(false);
   const [growLoadingIdx, setGrowLoadingIdx] = useState(0);
   const [printCornerSlots, setPrintCornerSlots] = useState(() => ({ ...PRINT_CORNER_DEFAULTS }));
+  const [printProductSize, setPrintProductSize] = useState(() => PRINT_SIZES[1]);
+  const [printProductPaper, setPrintProductPaper] = useState(() => PRINT_PAPERS[0]);
   const [releaseFetchState, setReleaseFetchState] = useState("idle");
   const [releaseDetail, setReleaseDetail] = useState(null);
   const [shareBusy, setShareBusy] = useState(false);
@@ -428,6 +438,24 @@ export default function App() {
     return { owner: dn, repo };
   }, [canExport, displayName, selectedRepo, repoList]);
 
+  const printSpecLine = useMemo(
+    () => `${printProductSize.label} · ${printProductPaper.label}`,
+    [printProductSize, printProductPaper],
+  );
+
+  const dendroPrintOptions = useMemo(
+    () => dendroDrawOptionsForPrint(printProductSize, printProductPaper),
+    [printProductSize, printProductPaper],
+  );
+
+  const exportDrawOpts = useMemo(
+    () => ({
+      ...dendroPrintOptions,
+      canvasSize: exportCanvasPixelsForPrintSize(printProductSize),
+    }),
+    [dendroPrintOptions, printProductSize],
+  );
+
   const printCornerTexts = useMemo(
     () =>
       resolvePrintCornerTexts({
@@ -437,6 +465,7 @@ export default function App() {
         pullRequests,
         releaseFetchState,
         releaseDetail,
+        printSpecLine,
       }),
     [
       printCornerSlots,
@@ -445,6 +474,7 @@ export default function App() {
       pullRequests,
       releaseFetchState,
       releaseDetail,
+      printSpecLine,
     ],
   );
 
@@ -600,8 +630,8 @@ export default function App() {
 
   const isMediumUp = viewportWidth >= 900;
   const isLargeUp = viewportWidth >= 1280;
-  /** Outer square frame (matches 1:1 print SKUs); ring is scaled to fit inside. */
-  const printPreviewSheetPx = isLargeUp ? 520 : (isMediumUp ? 440 : Math.max(260, Math.min(viewportWidth - 48, 340)));
+  const basePrintSheetPx = isLargeUp ? 520 : (isMediumUp ? 440 : Math.max(260, Math.min(viewportWidth - 48, 340)));
+  const printPreviewSheetPx = previewSheetPxForPrint(basePrintSheetPx, printProductSize);
   const createPageRingSize = Math.max(180, Math.round(printPreviewSheetPx * 0.76));
   const starterExamples = useMemo(() => seedGallery.slice(0, 6), []);
   const landingStampEntries = useMemo(() => {
@@ -754,7 +784,7 @@ export default function App() {
     if (!rings.length) return;
     setExporting(true);
     try {
-      await downloadHighResPNG(rings, {}, printCornerTexts, displayName.replace(/\//g, "-"));
+      await downloadHighResPNG(rings, exportDrawOpts, printCornerTexts, displayName.replace(/\//g, "-"));
     } finally {
       setExporting(false);
     }
@@ -762,7 +792,7 @@ export default function App() {
 
   const handlePrintOrder = async ({ size, paper, total }) => {
     if (!rings.length) return;
-    const blob = await exportHighResPNG(rings, {}, printCornerTexts);
+    const blob = await exportHighResPNG(rings, exportDrawOpts, printCornerTexts);
     // 2. Upload to Vercel Blob
     const uploadRes = await fetch("/api/print/upload-image", {
       method: "POST",
@@ -961,18 +991,60 @@ export default function App() {
               <div
                 style={{
                   ...styles.createStep,
-                  ...(canExport ? null : styles.createStepMuted),
+                  ...(!hasRingData ? styles.createStepMuted : null),
                 }}
               >
                 <div style={styles.createStepHead}>
                   <span style={styles.createStepBadge}>3</span>
-                  <h3 style={styles.createStepTitle}>Print labels</h3>
+                  <h3 style={styles.createStepTitle}>Print settings</h3>
                 </div>
                 <p style={styles.createStepHint}>
-                  {canExport
-                    ? "Hover or tap a corner on the preview to change what is burned into PNG export and print orders. Default: name top-left, year range top-right, contributions bottom-left."
-                    : "Available once you have live data from step 1 (not demo)."}
+                  {!hasRingData
+                    ? "Generate a ring first—then pick size and paper, and (with live data) corner labels for export."
+                    : !canExport
+                      ? "Size and paper update the preview and ring detail. Use live GitHub data (not demo) to edit corners and download a print-ready PNG."
+                      : "Size and paper drive preview scale, ring geometry, tone, and PNG pixel size. Hover corners on the preview for labels—bottom-right defaults to your size & paper line."}
                 </p>
+                {hasRingData && (
+                  <div style={styles.createPrintSettingsBlock}>
+                    <span style={styles.createPrintSettingsLabel}>Print size</span>
+                    <div style={styles.createPrintSettingsOptions}>
+                      {PRINT_SIZES.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          style={{
+                            ...styles.createPrintOption,
+                            ...(printProductSize.id === s.id ? styles.createPrintOptionActive : null),
+                          }}
+                          onClick={() => setPrintProductSize(s)}
+                        >
+                          <span>{s.label}</span>
+                          <span style={styles.createPrintOptionMeta}>${s.price}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <span style={styles.createPrintSettingsLabelPaper}>Paper</span>
+                    <div style={styles.createPrintSettingsOptions}>
+                      {PRINT_PAPERS.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          style={{
+                            ...styles.createPrintOption,
+                            ...(printProductPaper.id === p.id ? styles.createPrintOptionActive : null),
+                          }}
+                          onClick={() => setPrintProductPaper(p)}
+                        >
+                          <span>{p.label}</span>
+                          <span style={styles.createPrintOptionMeta}>
+                            {p.surcharge > 0 ? `+$${p.surcharge}` : "Included"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {canExport && wantsReleaseForPrint && creditTarget && (
                   <p style={styles.createReleaseCreditStatus}>
                     {releaseFetchState === "loading" && "Fetching release from GitHub…"}
@@ -988,33 +1060,47 @@ export default function App() {
           <div style={styles.createRight}>
             <div
               style={{
-                ...styles.createPrintPreviewShell,
-                maxWidth: printPreviewSheetPx,
+                width: "100%",
+                maxWidth: printPreviewSheetPx + 28,
+                marginLeft: "auto",
+                marginRight: "auto",
               }}
               aria-label="Print preview — ring and corner labels as exported"
             >
-              <div style={styles.createPrintPreviewRingWrap}>
-                {canExport && data && (
-                  <PrintCornerOverlay
-                    mode="edit"
-                    slots={printCornerSlots}
-                    onSlotChange={setPrintCornerSlot}
-                    cornerTexts={printCornerTexts}
-                    releaseFetchState={releaseFetchState}
-                  />
-                )}
-                <div style={styles.createPrintPreviewRing}>
-                  {data && (
-                    <TreeRing
-                      pullRequests={pullRequests}
-                      username={displayName}
-                      repoName={selectedRepo}
-                      size={createPageRingSize}
-                    />
-                  )}
-                  {loading && <div style={styles.loadingOverlay}>Loading…</div>}
+              {data ? (
+                <PrintProductMockup
+                  variant="embedded"
+                  printSize={printProductSize}
+                  printPaper={printProductPaper}
+                  facePx={printPreviewSheetPx}
+                >
+                  <div style={styles.createPrintPreviewInner}>
+                    {canExport && data && (
+                      <PrintCornerOverlay
+                        mode="edit"
+                        slots={printCornerSlots}
+                        onSlotChange={setPrintCornerSlot}
+                        cornerTexts={printCornerTexts}
+                        releaseFetchState={releaseFetchState}
+                      />
+                    )}
+                    <div style={styles.createPrintPreviewRing}>
+                      <TreeRing
+                        pullRequests={pullRequests}
+                        username={displayName}
+                        repoName={selectedRepo}
+                        size={createPageRingSize}
+                        options={dendroPrintOptions}
+                      />
+                      {loading && <div style={styles.loadingOverlay}>Loading…</div>}
+                    </div>
+                  </div>
+                </PrintProductMockup>
+              ) : (
+                <div style={styles.createPrintPreviewPlaceholder}>
+                  {loading ? "Loading…" : "Generate a ring to see the print preview."}
                 </div>
-              </div>
+              )}
             </div>
             <div style={styles.createActionsRowBelowViz}>
               <button
@@ -1312,11 +1398,14 @@ export default function App() {
           onClose={() => setShowPrintPanel(false)}
           onOrder={handlePrintOrder}
           displayName={displayName}
+          printSize={printProductSize}
+          printPaper={printProductPaper}
+          onPrintSizeChange={setPrintProductSize}
+          onPrintPaperChange={setPrintProductPaper}
           ringPreview={{
             pullRequests,
             username: displayName,
             repoName: selectedRepo,
-            size: Math.round(Math.min(340, createPageRingSize)),
           }}
           printCornerTexts={printCornerTexts}
         />
@@ -2022,30 +2111,64 @@ const styles = {
     margin: 0,
     lineHeight: 1.45,
   },
-  createPrintPreviewShell: {
-    width: "100%",
-    marginLeft: "auto",
-    marginRight: "auto",
-    aspectRatio: "1 / 1",
-    border: "1px solid #c4bcb2",
-    borderRadius: 0,
-    background: "#f5f0eb",
-    boxSizing: "border-box",
-    overflow: "hidden",
-    position: "relative",
-    boxShadow:
-      "0 16px 36px rgba(15, 15, 15, 0.1), 0 4px 12px rgba(15, 15, 15, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.45)",
-  },
-  createPrintPreviewRingWrap: {
-    position: "absolute",
-    inset: 0,
+  createPrintSettingsBlock: {
     display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    marginTop: 4,
+  },
+  createPrintSettingsLabel: {
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "#52525b",
+  },
+  createPrintSettingsLabelPaper: {
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "#52525b",
+    marginTop: 4,
+  },
+  createPrintSettingsOptions: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  createPrintOption: {
+    display: "flex",
+    justifyContent: "space-between",
     alignItems: "center",
-    justifyContent: "center",
-    minWidth: 0,
+    padding: "8px 12px",
+    borderRadius: 0,
+    border: "1px solid #e4e4e7",
+    background: "#fafafa",
+    color: "#3f3f46",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: 13,
+    textAlign: "left",
+    transition: "background 0.12s, border-color 0.12s",
+  },
+  createPrintOptionActive: {
+    background: "#18181b",
+    borderColor: "#18181b",
+    color: "#fafafa",
+  },
+  createPrintOptionMeta: {
+    fontSize: 12,
+    fontWeight: 500,
+    opacity: 0.85,
+  },
+  createPrintPreviewInner: {
+    position: "relative",
+    width: "100%",
+    height: "100%",
+    minHeight: 0,
   },
   createPrintPreviewRing: {
-    flex: "1 1 auto",
     width: "100%",
     height: "100%",
     minHeight: 0,
@@ -2055,6 +2178,21 @@ const styles = {
     position: "relative",
     padding: "clamp(10px, 3.5%, 24px)",
     background: "transparent",
+    boxSizing: "border-box",
+  },
+  createPrintPreviewPlaceholder: {
+    aspectRatio: "1 / 1",
+    width: "100%",
+    maxWidth: 440,
+    marginLeft: "auto",
+    marginRight: "auto",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 13,
+    color: "#71717a",
+    background: "linear-gradient(165deg, #e4e1dc 0%, #d8d4cd 100%)",
+    border: "1px dashed #c4c0b8",
     boxSizing: "border-box",
   },
   createActionsRowBelowViz: {

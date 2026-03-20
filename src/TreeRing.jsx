@@ -6,7 +6,7 @@ import { githubPRsToRings } from "./lib/adapter.js";
  * GitHub-specific tree ring visualization.
  * Wraps the generic DendroChart with PR-specific tooltip rendering.
  */
-export default function TreeRing({ pullRequests, username, repoName, size = 600 }) {
+export default function TreeRing({ pullRequests, username, repoName, size = 600, options = {} }) {
   const rings = useMemo(() => githubPRsToRings(pullRequests), [pullRequests]);
 
   if (!pullRequests.length) {
@@ -17,6 +17,7 @@ export default function TreeRing({ pullRequests, username, repoName, size = 600 
     <DendroChart
       rings={rings}
       size={size}
+      options={options}
       interactive={false}
       renderTooltip={(ring, index, x, y) => (
         <div

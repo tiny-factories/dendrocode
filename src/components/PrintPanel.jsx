@@ -1,24 +1,47 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import TreeRing from "../TreeRing.jsx";
 import PrintCornerOverlay from "./PrintCornerOverlay.jsx";
-
-const SIZES = [
-  { id: "12x12", label: '12×12"', sku: "GLOBAL-FAP-12x12", price: 49 },
-  { id: "16x16", label: '16×16"', sku: "GLOBAL-FAP-16x16", price: 79 },
-  { id: "24x24", label: '24×24"', sku: "GLOBAL-FAP-24x24", price: 129 },
-];
-
-const PAPERS = [
-  { id: "matte", label: "Enhanced Matte", surcharge: 0 },
-  { id: "hahnemuhle", label: "Hahnemühle German Etching", surcharge: 30 },
-];
+import PrintProductMockup from "./PrintProductMockup.jsx";
+import {
+  PRINT_PAPERS,
+  PRINT_SIZES,
+  dendroDrawOptionsForPrint,
+  modalPrintFacePx,
+  modalRingDrawPx,
+} from "../lib/printCatalog.js";
 
 /** Size / paper / checkout; optional live ring + corner label preview before payment. */
-export default function PrintPanel({ onClose, onOrder, displayName, ringPreview, printCornerTexts = {} }) {
-  const [size, setSize] = useState(SIZES[1]);
-  const [paper, setPaper] = useState(PAPERS[0]);
+export default function PrintPanel({
+  onClose,
+  onOrder,
+  displayName,
+  ringPreview,
+  printCornerTexts = {},
+  printSize,
+  printPaper,
+  onPrintSizeChange,
+  onPrintPaperChange,
+}) {
   const [ordering, setOrdering] = useState(false);
 
+  const [internalSize, setInternalSize] = useState(PRINT_SIZES[1]);
+  const [internalPaper, setInternalPaper] = useState(PRINT_PAPERS[0]);
+
+  const size = printSize ?? internalSize;
+  const paper = printPaper ?? internalPaper;
+
+  const pickSize = (s) => {
+    onPrintSizeChange?.(s);
+    if (printSize === undefined) setInternalSize(s);
+  };
+  const pickPaper = (p) => {
+    onPrintPaperChange?.(p);
+    if (printPaper === undefined) setInternalPaper(p);
+  };
+
+  const dendroOpts = dendroDrawOptionsForPrint(size, paper);
+  const modalFacePx = useMemo(() => modalPrintFacePx(size), [size]);
+  const modalRingPx = useMemo(() => modalRingDrawPx(modalFacePx), [modalFacePx]);
   const total = size.price + paper.surcharge;
 
   const handleOrder = async () => {
@@ -35,7 +58,7 @@ export default function PrintPanel({ onClose, onOrder, displayName, ringPreview,
       <div style={styles.panel} onClick={(e) => e.stopPropagation()}>
         <div style={styles.header}>
           <h3 style={styles.title}>Order a Print</h3>
-          <button style={styles.close} onClick={onClose}>×</button>
+          <button type="button" style={styles.close} onClick={onClose}>×</button>
         </div>
 
         <p style={styles.subtitle}>
@@ -44,28 +67,35 @@ export default function PrintPanel({ onClose, onOrder, displayName, ringPreview,
 
         {ringPreview && (ringPreview.pullRequests?.length > 0) && (
           <div style={styles.previewBlock}>
-            <div style={styles.previewLabel}>What you’re ordering</div>
-            <div style={styles.previewViz}>
-              <PrintCornerOverlay mode="read" cornerTexts={printCornerTexts} />
-              <TreeRing
-                pullRequests={ringPreview.pullRequests}
-                username={ringPreview.username || displayName}
-                repoName={ringPreview.repoName}
-                size={ringPreview.size ?? 300}
-              />
+            <div style={styles.previewLabel}>Print preview</div>
+            <div style={styles.previewMockupWrap}>
+              <PrintProductMockup variant="modal" printSize={size} printPaper={paper} facePx={modalFacePx}>
+                <div style={styles.previewFaceInner}>
+                  <PrintCornerOverlay mode="read" cornerTexts={printCornerTexts} />
+                  <div style={styles.previewRingPad}>
+                    <TreeRing
+                      pullRequests={ringPreview.pullRequests}
+                      username={ringPreview.username || displayName}
+                      repoName={ringPreview.repoName}
+                      size={modalRingPx}
+                      options={dendroOpts}
+                    />
+                  </div>
+                </div>
+              </PrintProductMockup>
             </div>
           </div>
         )}
 
-        {/* Size selector */}
         <div style={styles.section}>
           <label style={styles.label}>Size</label>
           <div style={styles.options}>
-            {SIZES.map((s) => (
+            {PRINT_SIZES.map((s) => (
               <button
                 key={s.id}
+                type="button"
                 style={{ ...styles.option, ...(size.id === s.id ? styles.optionActive : {}) }}
-                onClick={() => setSize(s)}
+                onClick={() => pickSize(s)}
               >
                 <span style={styles.optionLabel}>{s.label}</span>
                 <span style={styles.optionPrice}>${s.price}</span>
@@ -74,15 +104,15 @@ export default function PrintPanel({ onClose, onOrder, displayName, ringPreview,
           </div>
         </div>
 
-        {/* Paper selector */}
         <div style={styles.section}>
           <label style={styles.label}>Paper</label>
           <div style={styles.options}>
-            {PAPERS.map((p) => (
+            {PRINT_PAPERS.map((p) => (
               <button
                 key={p.id}
+                type="button"
                 style={{ ...styles.option, ...(paper.id === p.id ? styles.optionActive : {}) }}
-                onClick={() => setPaper(p)}
+                onClick={() => pickPaper(p)}
               >
                 <span style={styles.optionLabel}>{p.label}</span>
                 <span style={styles.optionPrice}>
@@ -93,13 +123,12 @@ export default function PrintPanel({ onClose, onOrder, displayName, ringPreview,
           </div>
         </div>
 
-        {/* Total + order */}
         <div style={styles.footer}>
           <div style={styles.total}>
             <span style={styles.totalLabel}>Total</span>
             <span style={styles.totalPrice}>${total}</span>
           </div>
-          <button style={styles.orderBtn} onClick={handleOrder} disabled={ordering}>
+          <button type="button" style={styles.orderBtn} onClick={handleOrder} disabled={ordering}>
             {ordering ? "Processing..." : `Order Print — $${total}`}
           </button>
           <p style={styles.hint}>
@@ -147,14 +176,25 @@ const styles = {
     color: "#6a5a48",
     padding: "10px 14px 0",
   },
-  previewViz: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: "12px 12px 16px",
-    background: "#fffcf8",
+  previewMockupWrap: {
+    padding: "6px 6px 12px",
+  },
+
+  previewFaceInner: {
     position: "relative",
-    minHeight: 120,
+    width: "100%",
+    height: "100%",
+  },
+
+  previewRingPad: {
+    position: "relative",
+    width: "100%",
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "clamp(8px, 3%, 18px)",
+    boxSizing: "border-box",
   },
   header: {
     display: "flex",

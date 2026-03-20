@@ -3,7 +3,7 @@
  */
 import { drawDendroRings } from "dendrochronology-visualizer";
 
-const PRINT_SIZE = 4000;
+const DEFAULT_EXPORT_PIXELS = 4000;
 
 /**
  * @param {object} cornerTexts
@@ -49,17 +49,23 @@ function drawCornerLabels(ctx, size, cornerTexts) {
  * @param {object} [cornerTexts] - optional labels placed near the four corners of the ring
  */
 export async function exportHighResPNG(rings, opts = {}, cornerTexts = {}) {
+  const { canvasSize, ...drawOpts } = opts;
+  const size =
+    typeof canvasSize === "number" && canvasSize > 0 ? Math.round(canvasSize) : DEFAULT_EXPORT_PIXELS;
+
   const canvas = document.createElement("canvas");
-  const size = PRINT_SIZE;
   canvas.width = size;
   canvas.height = size;
 
   const ctx = canvas.getContext("2d");
 
-  ctx.fillStyle = "#f5f0eb";
+  const paletteBg = drawOpts.palette && typeof drawOpts.palette.background === "string"
+    ? drawOpts.palette.background
+    : "#f5f0eb";
+  ctx.fillStyle = paletteBg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  drawDendroRings(ctx, rings, { ...opts, size });
+  drawDendroRings(ctx, rings, { ...drawOpts, size });
   drawCornerLabels(ctx, size, cornerTexts);
 
   return new Promise((resolve) => {
