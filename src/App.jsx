@@ -4,10 +4,10 @@ import GallerySection from "./components/GallerySection.jsx";
 import AuthButton from "./components/AuthButton.jsx";
 import PrintPanel from "./components/PrintPanel.jsx";
 import LazyDendroStamp from "./components/LazyDendroStamp.jsx";
-import { generateDemoData, fetchLatestRelease } from "./github.js";
+import { generateDemoData } from "./github.js";
 import { seedGallery } from "./data/seedGallery.js";
 import { getCache, setCache, addGalleryEntry, getGalleryEntries } from "./lib/cache.js";
-import { fetchTreeData } from "./lib/api.js";
+import { fetchTreeData, fetchReleaseForRepo } from "./lib/api.js";
 import { githubPRsToRings } from "./lib/adapter.js";
 import { downloadHighResPNG, exportHighResPNG } from "./lib/exportImage.js";
 import {
@@ -336,14 +336,17 @@ export default function App() {
       setReleaseFetchState("loading");
       setReleaseDetail(null);
       try {
-        const r = await fetchLatestRelease(creditTarget.owner, creditTarget.repo, token || undefined);
+        const out = await fetchReleaseForRepo(creditTarget.owner, creditTarget.repo, token || undefined);
         if (cancelled) return;
-        if (!r) {
+        if (!out.ok) {
+          setReleaseFetchState("error");
+          setReleaseDetail(null);
+        } else if (!out.release) {
           setReleaseFetchState("none");
           setReleaseDetail(null);
         } else {
           setReleaseFetchState("done");
-          setReleaseDetail(r);
+          setReleaseDetail(out.release);
         }
       } catch {
         if (!cancelled) {
@@ -665,6 +668,10 @@ export default function App() {
                 <div style={styles.createSecondaryBlock}>
                   <details style={styles.advancedDetails}>
                     <summary style={styles.tokenToggleCreate}>Advanced (token)</summary>
+                    <p style={styles.createTokenHint}>
+                      Sign in with GitHub uses your token on <strong>this app’s server</strong> ( /api ). Paste a PAT here only
+                      if you need browser-direct GitHub access—for example <strong>local Vite</strong> without API routes.
+                    </p>
                     <input
                       type="password"
                       value={token}
@@ -1569,6 +1576,12 @@ const styles = {
     textAlign: "left",
     fontFamily: "inherit",
     padding: 0,
+  },
+  createTokenHint: {
+    margin: "0 0 10px",
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "#71717a",
   },
   createTokenInput: {
     marginTop: 10,

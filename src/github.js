@@ -52,7 +52,7 @@ export async function fetchPullRequests(username, token) {
     if (res.status === 404) throw new Error(`User "${username}" not found`);
     if (res.status === 403) {
       throw new Error(
-        "GitHub API rate limit (anonymous: ~60 requests/hour per IP). Paste a personal access token under Advanced (token)—“Sign in with GitHub” does not apply to these requests—or try again later."
+        "GitHub API rate limit or forbidden from this browser. On the live app, use Grow / the preview so data loads through /api (your sign-in applies there). Or paste a personal access token under Advanced for direct browser calls (e.g. local dev)."
       );
     }
     throw new Error("Failed to fetch repos");
@@ -177,7 +177,7 @@ export async function fetchRepoPullRequests(owner, repo, token) {
     if (res.status === 404) throw new Error(`Repo "${owner}/${repo}" not found`);
     if (res.status === 403) {
       throw new Error(
-        "GitHub API rate limit (anonymous: ~60 requests/hour per IP). Paste a personal access token under Advanced (token)—“Sign in with GitHub” does not apply to these requests—or try again later."
+        "GitHub API rate limit or forbidden from this browser. On the live app, use Grow / the preview so data loads through /api (your sign-in applies there). Or paste a personal access token under Advanced for direct browser calls (e.g. local dev)."
       );
     }
     throw new Error("Failed to fetch pull requests");
