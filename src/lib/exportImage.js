@@ -11,13 +11,22 @@ const PRINT_SIZE = 4000; // 4000px = ~13.3" at 300 DPI
  * @param {Array} rings - Ring data (same format as DendroChart)
  * @param {object} [opts] - Options for drawDendroRings
  * @param {string} [label] - Optional label to render below the rings
+ * @param {string} [releaseLine] - Optional second line (e.g. org/repo · tag) for ship credits
  * @returns {Promise<Blob>}
  */
-export async function exportHighResPNG(rings, opts = {}, label = "") {
+export async function exportHighResPNG(rings, opts = {}, label = "", releaseLine = "") {
   const canvas = document.createElement("canvas");
   const size = PRINT_SIZE;
+  const hasFooter = !!(label || releaseLine);
+  let footerH = 0;
+  if (hasFooter) {
+    footerH = 52;
+    if (label) footerH += 44;
+    if (releaseLine) footerH += 40;
+    footerH += 36;
+  }
   canvas.width = size;
-  canvas.height = label ? size + 120 : size;
+  canvas.height = size + footerH;
 
   const ctx = canvas.getContext("2d");
 
@@ -28,16 +37,24 @@ export async function exportHighResPNG(rings, opts = {}, label = "") {
   // Draw rings at full resolution
   drawDendroRings(ctx, rings, { ...opts, size });
 
-  // Optional label at bottom
-  if (label) {
-    ctx.fillStyle = "#b0a090";
-    ctx.font = "300 32px Inter, -apple-system, sans-serif";
+  if (hasFooter) {
     ctx.textAlign = "center";
-    ctx.fillText(label, size / 2, size + 60);
-
+    let y = size + 48;
+    if (label) {
+      ctx.fillStyle = "#b0a090";
+      ctx.font = "300 32px Inter, -apple-system, sans-serif";
+      ctx.fillText(label, size / 2, y);
+      y += 44;
+    }
+    if (releaseLine) {
+      ctx.fillStyle = "#7a6a58";
+      ctx.font = "500 24px Inter, -apple-system, sans-serif";
+      ctx.fillText(releaseLine, size / 2, y);
+      y += 40;
+    }
     ctx.fillStyle = "#d4c8b8";
     ctx.font = "300 20px Inter, -apple-system, sans-serif";
-    ctx.fillText(`${rings.length} contributions · dendrochronology`, size / 2, size + 95);
+    ctx.fillText(`${rings.length} contributions · dendrochronology`, size / 2, y);
   }
 
   return new Promise((resolve) => {
@@ -48,8 +65,8 @@ export async function exportHighResPNG(rings, opts = {}, label = "") {
 /**
  * Trigger a browser download of the high-res PNG.
  */
-export async function downloadHighResPNG(rings, opts = {}, label = "", filename = "tree-ring") {
-  const blob = await exportHighResPNG(rings, opts, label);
+export async function downloadHighResPNG(rings, opts = {}, label = "", filename = "tree-ring", releaseLine = "") {
+  const blob = await exportHighResPNG(rings, opts, label, releaseLine);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

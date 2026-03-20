@@ -137,6 +137,30 @@ export async function fetchPullRequests(username, token) {
   return { pullRequests, repos: repoStats };
 }
 
+/**
+ * Latest published GitHub release for a repo, or null if none / 404.
+ */
+export async function fetchLatestRelease(owner, repo, token) {
+  const opts = { headers: headers(token) };
+  const res = await fetch(
+    `${API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/latest`,
+    opts
+  );
+  if (res.status === 404) return null;
+  if (res.status === 403) {
+    const err = new Error("GitHub API rate limit or forbidden when fetching release.");
+    err.status = 403;
+    throw err;
+  }
+  if (!res.ok) throw new Error(`GitHub releases: ${res.status}`);
+  const j = await res.json();
+  return {
+    tagName: j.tag_name || "",
+    name: j.name || "",
+    publishedAt: j.published_at || null,
+  };
+}
+
 export async function fetchRepoPullRequests(owner, repo, token) {
   const opts = { headers: headers(token) };
   const hasAuth = !!token;

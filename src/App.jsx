@@ -4,7 +4,7 @@ import GallerySection from "./components/GallerySection.jsx";
 import AuthButton from "./components/AuthButton.jsx";
 import PrintPanel from "./components/PrintPanel.jsx";
 import LazyDendroStamp from "./components/LazyDendroStamp.jsx";
-import { generateDemoData } from "./github.js";
+import { generateDemoData, fetchLatestRelease } from "./github.js";
 import { seedGallery } from "./data/seedGallery.js";
 import { getCache, setCache, addGalleryEntry, getGalleryEntries } from "./lib/cache.js";
 import { fetchTreeData } from "./lib/api.js";
@@ -120,6 +120,9 @@ export default function App() {
   const [landingGrowHovered, setLandingGrowHovered] = useState(false);
   const [createGrowHovered, setCreateGrowHovered] = useState(false);
   const [growLoadingIdx, setGrowLoadingIdx] = useState(0);
+  const [releaseCreditOn, setReleaseCreditOn] = useState(false);
+  const [releaseFetchState, setReleaseFetchState] = useState("idle");
+  const [releaseDetail, setReleaseDetail] = useState(null);
 
   // Merge seed + localStorage gallery entries
   useEffect(() => {
@@ -282,12 +285,78 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const repoList = data?.repos || [];
+  const repoList = useMemo(() => {
+    const fromData = data?.repos || [];
+    if (fromData.length) return fromData;
+    const map = {};
+    for (const pr of data?.pullRequests || []) {
+      if (!map[pr.repo]) map[pr.repo] = { name: pr.repo, count: 0 };
+      map[pr.repo].count++;
+    }
+    return Object.values(map).sort((a, b) => b.count - a.count);
+  }, [data?.repos, data?.pullRequests]);
   const pullRequests = selectedRepo
     ? (data?.pullRequests || []).filter((pr) => pr.repo === selectedRepo)
     : data?.pullRequests || [];
 
   const rings = useMemo(() => githubPRsToRings(pullRequests), [pullRequests]);
+  const hasRingData = pullRequests.length > 0;
+  const canExport = hasRingData && displayName !== "demo";
+
+  const creditTarget = useMemo(() => {
+    if (!canExport) return null;
+    const dn = displayName.trim();
+    if (dn.includes("/")) {
+      const [o, r] = dn.split("/").map((s) => s.trim()).filter(Boolean);
+      if (o && r) return { owner: o, repo: r };
+    }
+    const repo = selectedRepo || repoList[0]?.name;
+    if (!repo) return null;
+    return { owner: dn, repo };
+  }, [canExport, displayName, selectedRepo, repoList]);
+
+  const exportReleaseLine = useMemo(() => {
+    if (!releaseCreditOn || !creditTarget) return "";
+    const { owner, repo } = creditTarget;
+    const base = `${owner} / ${repo}`;
+    if (releaseFetchState === "loading") return base;
+    if (releaseFetchState === "done" && releaseDetail?.tagName) return `${base} · ${releaseDetail.tagName}`;
+    if (releaseFetchState === "done" && releaseDetail?.name) return `${base} · ${releaseDetail.name}`;
+    return base;
+  }, [releaseCreditOn, creditTarget, releaseFetchState, releaseDetail]);
+
+  useEffect(() => {
+    if (!releaseCreditOn || !creditTarget) {
+      setReleaseFetchState("idle");
+      setReleaseDetail(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setReleaseFetchState("loading");
+      setReleaseDetail(null);
+      try {
+        const r = await fetchLatestRelease(creditTarget.owner, creditTarget.repo, token || undefined);
+        if (cancelled) return;
+        if (!r) {
+          setReleaseFetchState("none");
+          setReleaseDetail(null);
+        } else {
+          setReleaseFetchState("done");
+          setReleaseDetail(r);
+        }
+      } catch {
+        if (!cancelled) {
+          setReleaseFetchState("error");
+          setReleaseDetail(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [releaseCreditOn, creditTarget, token]);
+
   const isMediumUp = viewportWidth >= 900;
   const isLargeUp = viewportWidth >= 1280;
   const chartSize = isLargeUp ? 520 : (isMediumUp ? 440 : Math.max(240, Math.min(viewportWidth - 56, 340)));
@@ -442,7 +511,13 @@ export default function App() {
     if (!rings.length) return;
     setExporting(true);
     try {
-      await downloadHighResPNG(rings, {}, displayName, displayName.replace(/\//g, "-"));
+      await downloadHighResPNG(
+        rings,
+        {},
+        displayName,
+        displayName.replace(/\//g, "-"),
+        exportReleaseLine,
+      );
     } finally {
       setExporting(false);
     }
@@ -451,7 +526,7 @@ export default function App() {
   const handlePrintOrder = async ({ size, paper, total }) => {
     if (!rings.length) return;
     // 1. Export high-res PNG
-    const blob = await exportHighResPNG(rings, {}, displayName);
+    const blob = await exportHighResPNG(rings, {}, displayName, exportReleaseLine);
     // 2. Upload to Vercel Blob
     const uploadRes = await fetch("/api/print/upload-image", {
       method: "POST",
@@ -473,8 +548,6 @@ export default function App() {
   };
 
   const GrowLoadingIcon = GROW_LOADING_SEQUENCE[growLoadingIdx];
-  const hasRingData = pullRequests.length > 0;
-  const canExport = hasRingData && displayName !== "demo";
 
   return (
     <div style={styles.page}>
@@ -668,6 +741,44 @@ export default function App() {
                     ? "Save a hi-res PNG or order a wall print."
                     : "Available once you have live data from step 1 (not demo)."}
                 </p>
+                {canExport && creditTarget && (
+                  <div style={styles.createReleaseCreditBlock}>
+                    <label style={styles.createReleaseCreditLabel}>
+                      <input
+                        type="checkbox"
+                        checked={releaseCreditOn}
+                        onChange={(e) => setReleaseCreditOn(e.target.checked)}
+                        style={styles.createReleaseCreditCheckbox}
+                      />
+                      <span>
+                        Add org / repo / release tag to the PNG footer (for launches & credits). Uses{" "}
+                        <a
+                          href={`https://github.com/${creditTarget.owner}/${creditTarget.repo}/releases`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={styles.createInlineLink}
+                        >
+                          latest GitHub release
+                        </a>
+                        {displayName.includes("/") ? "" : " — repo filter or your busiest repo if you’re on a user account"}
+                        .
+                      </span>
+                    </label>
+                    {releaseCreditOn && (
+                      <p style={styles.createReleaseCreditStatus}>
+                        {releaseFetchState === "loading" && "Fetching release from GitHub…"}
+                        {releaseFetchState !== "loading" && exportReleaseLine && (
+                          <>
+                            <span style={styles.createReleaseCreditPrefix}>PNG second line: </span>
+                            <code style={styles.createReleaseCreditCode}>{exportReleaseLine}</code>
+                            {releaseFetchState === "none" && " — no published release; org/repo only."}
+                            {releaseFetchState === "error" && " — release lookup failed; org/repo only."}
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div style={styles.createActionsRow}>
                   <button
                     type="button"
@@ -1374,6 +1485,49 @@ const styles = {
     margin: 0,
     display: "flex",
     flexDirection: "column",
+  },
+  createReleaseCreditBlock: {
+    marginTop: 12,
+    marginBottom: 4,
+    padding: "12px 14px",
+    background: "#fafafa",
+    border: "1px solid #e4e4e7",
+    borderRadius: 0,
+  },
+  createReleaseCreditLabel: {
+    display: "flex",
+    gap: 10,
+    alignItems: "flex-start",
+    fontSize: 13,
+    lineHeight: 1.55,
+    color: "#3f3f46",
+    cursor: "pointer",
+    margin: 0,
+  },
+  createReleaseCreditCheckbox: {
+    marginTop: 3,
+    flexShrink: 0,
+    accentColor: "#18181b",
+  },
+  createReleaseCreditStatus: {
+    margin: "10px 0 0 26px",
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "#71717a",
+  },
+  createReleaseCreditPrefix: {
+    marginRight: 4,
+  },
+  createReleaseCreditCode: {
+    fontSize: "0.95em",
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    color: "#52525b",
+    background: "#f4f4f5",
+    padding: "2px 6px",
+  },
+  createInlineLink: {
+    color: "#2563eb",
+    textUnderlineOffset: 2,
   },
   createActionsRow: {
     display: "flex",
