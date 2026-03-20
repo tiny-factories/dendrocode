@@ -4,6 +4,9 @@
 
 const MANIFEST_PATH = "dendrocode-gallery/manifest.json";
 
+/** Private store: gallery is only read/written server-side with BLOB_READ_WRITE_TOKEN. */
+const GALLERY_BLOB_ACCESS = "private";
+
 function slugToTreePath(slug) {
   const id = Buffer.from(slug, "utf8").toString("base64url");
   return `dendrocode-gallery/trees/${id}.json`;
@@ -23,7 +26,7 @@ export function galleryStorageKind() {
 async function readManifest(get) {
   let result;
   try {
-    result = await get(MANIFEST_PATH, { access: "public" });
+    result = await get(MANIFEST_PATH, { access: GALLERY_BLOB_ACCESS });
   } catch {
     return emptyManifest();
   }
@@ -42,7 +45,7 @@ async function readTreePayload(get, slug) {
   const pathname = slugToTreePath(slug);
   let result;
   try {
-    result = await get(pathname, { access: "public" });
+    result = await get(pathname, { access: GALLERY_BLOB_ACCESS });
   } catch {
     return null;
   }
@@ -57,7 +60,7 @@ async function readTreePayload(get, slug) {
 
 async function putJson(put, pathname, obj) {
   await put(pathname, JSON.stringify(obj), {
-    access: "public",
+    access: GALLERY_BLOB_ACCESS,
     contentType: "application/json",
     addRandomSuffix: false,
   });
