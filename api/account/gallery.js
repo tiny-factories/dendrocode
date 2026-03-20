@@ -2,12 +2,7 @@
  * GET /api/account/gallery — trees you shared (requires gh_token).
  */
 
-let kv;
-try {
-  kv = (await import("@vercel/kv")).kv;
-} catch {
-  kv = null;
-}
+import { galleryStorageKind, listAccountSharesFromBlob } from "../galleryStorage.js";
 
 function parseCookie(cookieHeader, name) {
   if (!cookieHeader) return null;
@@ -29,7 +24,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  if (!kv) {
+  const kind = galleryStorageKind();
+  if (!kind) {
     return res.status(200).json({ entries: [] });
   }
 
@@ -44,6 +40,12 @@ export default async function handler(req, res) {
   }
 
   try {
+    if (kind === "blob") {
+      const entries = await listAccountSharesFromBlob(login);
+      return res.status(200).json({ entries });
+    }
+
+    const { kv } = await import("@vercel/kv");
     const slugs = (await kv.smembers(`gallery:user:${login}`)) || [];
     const entries = [];
     for (const slug of slugs) {

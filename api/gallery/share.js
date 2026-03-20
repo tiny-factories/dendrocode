@@ -1,15 +1,10 @@
 /**
  * POST /api/gallery/share
- * Publish the current ring (pull requests on canvas) to KV for Browse gallery.
+ * Publish the current ring (pull requests on canvas) for Browse gallery (KV or Blob).
  * Requires GitHub OAuth session (gh_token cookie).
  */
 
-let kv;
-try {
-  kv = (await import("@vercel/kv")).kv;
-} catch {
-  kv = null;
-}
+import { galleryStorageKind, shareCommunityToBlob } from "../galleryStorage.js";
 
 const SHARE_TTL_SECONDS = 60 * 86400; // 60 days
 
@@ -85,8 +80,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  if (!kv) {
-    return res.status(503).json({ error: "Gallery storage is not configured" });
+  const kind = galleryStorageKind();
+  if (!kind) {
+    return res.status(503).json({
+      error:
+        "Gallery storage is not configured. Set Vercel KV (KV_REST_*) or BLOB_READ_WRITE_TOKEN.",
+    });
   }
 
   const ghToken = parseCookie(req.headers.cookie, "gh_token");
@@ -140,10 +139,15 @@ export default async function handler(req, res) {
   };
 
   try {
-    const cacheKey = `tree:${slug}`;
-    await kv.set(cacheKey, payload, { ex: SHARE_TTL_SECONDS });
-    await kv.zadd("gallery:index", { score: Date.now(), member: slug });
-    await kv.sadd(`gallery:user:${login}`, slug);
+    if (kind === "kv") {
+      const { kv } = await import("@vercel/kv");
+      const cacheKey = `tree:${slug}`;
+      await kv.set(cacheKey, payload, { ex: SHARE_TTL_SECONDS });
+      await kv.zadd("gallery:index", { score: Date.now(), member: slug });
+      await kv.sadd(`gallery:user:${login}`, slug);
+    } else {
+      await shareCommunityToBlob(slug, payload, login);
+    }
     return res.status(200).json({ ok: true, slug });
   } catch (e) {
     return res.status(500).json({ error: e.message || "Save failed" });

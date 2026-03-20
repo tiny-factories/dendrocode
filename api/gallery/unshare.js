@@ -1,14 +1,9 @@
 /**
- * POST /api/gallery/unshare — remove a tree from public Browse (KV).
+ * POST /api/gallery/unshare — remove a tree from public Browse (KV or Blob).
  * Body: { slug }. Caller must be the GitHub user who shared it.
  */
 
-let kv;
-try {
-  kv = (await import("@vercel/kv")).kv;
-} catch {
-  kv = null;
-}
+import { galleryStorageKind, unshareCommunityFromBlob } from "../galleryStorage.js";
 
 function parseCookie(cookieHeader, name) {
   if (!cookieHeader) return null;
@@ -30,8 +25,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  if (!kv) {
-    return res.status(503).json({ error: "Gallery storage is not configured" });
+  const kind = galleryStorageKind();
+  if (!kind) {
+    return res.status(503).json({
+      error:
+        "Gallery storage is not configured. Set Vercel KV (KV_REST_*) or BLOB_READ_WRITE_TOKEN.",
+    });
   }
 
   const ghToken = parseCookie(req.headers.cookie, "gh_token");
@@ -58,21 +57,28 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Could not verify GitHub user" });
   }
 
-  const userKey = `gallery:user:${login}`;
-  let members = [];
   try {
-    members = (await kv.smembers(userKey)) || [];
-  } catch {
-    members = [];
-  }
-  if (!members.includes(slug)) {
-    return res.status(403).json({ error: "This item is not in your shared list" });
-  }
-
-  try {
-    await kv.srem(userKey, slug);
-    await kv.zrem("gallery:index", slug);
-    await kv.del(`tree:${slug}`);
+    if (kind === "kv") {
+      const { kv } = await import("@vercel/kv");
+      const userKey = `gallery:user:${login}`;
+      let members = [];
+      try {
+        members = (await kv.smembers(userKey)) || [];
+      } catch {
+        members = [];
+      }
+      if (!members.includes(slug)) {
+        return res.status(403).json({ error: "This item is not in your shared list" });
+      }
+      await kv.srem(userKey, slug);
+      await kv.zrem("gallery:index", slug);
+      await kv.del(`tree:${slug}`);
+    } else {
+      const out = await unshareCommunityFromBlob(slug, login);
+      if (!out.ok) {
+        return res.status(403).json({ error: out.error || "Unshare not allowed" });
+      }
+    }
     return res.status(200).json({ ok: true, slug });
   } catch (e) {
     return res.status(500).json({ error: e.message || "Unshare failed" });

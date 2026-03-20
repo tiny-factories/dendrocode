@@ -1,18 +1,12 @@
 /**
- * Weekly cron (Vercel): refresh top public repos into KV for Browse.
+ * Weekly cron (Vercel): refresh top public repos into KV or Blob for Browse.
  * Secured with CRON_SECRET (Authorization: Bearer …).
  *
- * Uses one server GITHUB_TOKEN burst per run; visitors then read KV (no GitHub) for those slugs.
+ * Uses one server GITHUB_TOKEN burst per run; visitors read cache (no GitHub) for those slugs.
  */
 
 import { fetchRepoPRs } from "../githubTreeServer.js";
-
-let kv;
-try {
-  kv = (await import("@vercel/kv")).kv;
-} catch {
-  kv = null;
-}
+import { galleryStorageKind, upsertPopularTreeBlob } from "../galleryStorage.js";
 
 const WEEKLY_CACHE_SECONDS = 8 * 86400; // overlap weekly schedule
 /** Keep small so the job finishes within serverless time limits (set maxDuration in vercel.json). */
@@ -46,8 +40,9 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  if (!kv) {
-    return res.status(503).json({ error: "KV not configured" });
+  const kind = galleryStorageKind();
+  if (!kind) {
+    return res.status(503).json({ error: "KV or Blob storage not configured for gallery" });
   }
 
   const token = process.env.GITHUB_TOKEN;
@@ -102,8 +97,13 @@ export default async function handler(req, res) {
         source: "weekly-cron",
       };
 
-      await kv.set(`tree:${slug}`, payload, { ex: WEEKLY_CACHE_SECONDS });
-      await kv.zadd("gallery:index", { score: Date.now(), member: slug });
+      if (kind === "kv") {
+        const { kv } = await import("@vercel/kv");
+        await kv.set(`tree:${slug}`, payload, { ex: WEEKLY_CACHE_SECONDS });
+        await kv.zadd("gallery:index", { score: Date.now(), member: slug });
+      } else {
+        await upsertPopularTreeBlob(slug, payload);
+      }
       refreshed.push(slug);
     } catch (e) {
       errors.push({ slug, reason: e.message || "fetch_failed" });
@@ -115,6 +115,6 @@ export default async function handler(req, res) {
     refreshed,
     errors,
     message:
-      "KV updated from GitHub. Browse serves this data without per-visitor GitHub calls for these slugs.",
+      "Gallery cache updated from GitHub. Browse serves this data without per-visitor GitHub calls for these slugs.",
   });
 }

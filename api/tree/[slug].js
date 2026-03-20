@@ -1,15 +1,18 @@
 /**
  * Serverless API route: GET /api/tree/:slug
- * Fetches tree ring data from KV cache or GitHub API with full pagination.
+ * Fetches tree ring data from KV/Blob gallery cache when available, else GitHub API.
  */
 
 import { fetchUserPRs, fetchRepoPRs, DEFAULT_TREE_TTL_SECONDS } from "../githubTreeServer.js";
+import { galleryStorageKind, getGalleryTreeBlobIfPresent } from "../galleryStorage.js";
 
-let kv;
-try {
-  kv = (await import("@vercel/kv")).kv;
-} catch {
-  kv = null;
+let kv = null;
+if (galleryStorageKind() === "kv") {
+  try {
+    kv = (await import("@vercel/kv")).kv;
+  } catch {
+    kv = null;
+  }
 }
 
 function parseCookie(cookieHeader, name) {
@@ -44,6 +47,17 @@ export default async function handler(req, res) {
         }
       } catch (e) {
         console.error("KV read error:", e.message);
+      }
+    }
+
+    if (!kv && !userToken && galleryStorageKind() === "blob") {
+      try {
+        const blobCached = await getGalleryTreeBlobIfPresent(slug);
+        if (blobCached?.pullRequests?.length) {
+          return res.status(200).json({ ...blobCached, fromCache: true });
+        }
+      } catch (e) {
+        console.error("Blob gallery cache read error:", e.message);
       }
     }
 
