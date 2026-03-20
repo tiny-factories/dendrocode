@@ -71,6 +71,15 @@ function clampInt(v, lo, hi) {
   return Math.min(hi, Math.max(lo, Math.trunc(n)));
 }
 
+async function githubLogin(token) {
+  const r = await fetch("https://api.github.com/user", {
+    headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) return null;
+  const u = await r.json();
+  return typeof u.login === "string" ? u.login : null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -114,6 +123,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Invalid or empty pullRequests" });
   }
 
+  const login = await githubLogin(ghToken);
+  if (!login) {
+    return res.status(502).json({ error: "Could not verify GitHub user" });
+  }
+
   const now = new Date().toISOString();
   const payload = {
     pullRequests,
@@ -122,12 +136,14 @@ export default async function handler(req, res) {
     cachedAt: now,
     category: "community",
     sharedToGallery: true,
+    sharedByLogin: login,
   };
 
   try {
     const cacheKey = `tree:${slug}`;
     await kv.set(cacheKey, payload, { ex: SHARE_TTL_SECONDS });
     await kv.zadd("gallery:index", { score: Date.now(), member: slug });
+    await kv.sadd(`gallery:user:${login}`, slug);
     return res.status(200).json({ ok: true, slug });
   } catch (e) {
     return res.status(500).json({ error: e.message || "Save failed" });

@@ -20,7 +20,6 @@ import {
   Footprints,
   TreeDeciduous,
   Sun,
-  Share2,
 } from "lucide-react";
 
 const GITHUB_PATH_SKIP_SECOND = new Set([
@@ -106,11 +105,14 @@ export default function App() {
   const [showPrintPanel, setShowPrintPanel] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [hoveredStamp, setHoveredStamp] = useState(null);
-  const [currentPage, setCurrentPage] = useState(() => (
-    typeof window === "undefined"
-      ? "home"
-      : (window.location.hash === "#/browse" ? "browse" : window.location.hash === "#/create" ? "create" : "home")
-  ));
+  const [currentPage, setCurrentPage] = useState(() => {
+    if (typeof window === "undefined") return "home";
+    const h = window.location.hash;
+    if (h === "#/browse") return "browse";
+    if (h === "#/create") return "create";
+    if (h === "#/account") return "account";
+    return "home";
+  });
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? 1200 : window.innerWidth
   ));
@@ -122,11 +124,16 @@ export default function App() {
   const [landingGrowHovered, setLandingGrowHovered] = useState(false);
   const [createGrowHovered, setCreateGrowHovered] = useState(false);
   const [growLoadingIdx, setGrowLoadingIdx] = useState(0);
-  const [releaseCreditOn, setReleaseCreditOn] = useState(false);
+  const [footerPrintTitle, setFooterPrintTitle] = useState(true);
+  const [footerPrintOrgRepo, setFooterPrintOrgRepo] = useState(false);
+  const [footerPrintReleaseTag, setFooterPrintReleaseTag] = useState(false);
   const [releaseFetchState, setReleaseFetchState] = useState("idle");
   const [releaseDetail, setReleaseDetail] = useState(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareMessage, setShareMessage] = useState(null);
+  const [shareToBrowse, setShareToBrowse] = useState(false);
+  const [accountEntries, setAccountEntries] = useState([]);
+  const [accountLoading, setAccountLoading] = useState(false);
 
   const refreshGallery = useCallback(async () => {
     const stored = getGalleryEntries();
@@ -141,6 +148,23 @@ export default function App() {
       /* offline or no KV */
     }
     setGalleryEntries(mergeGallerySources(server, stored, seedGallery));
+  }, []);
+
+  const refreshAccountGallery = useCallback(async () => {
+    setAccountLoading(true);
+    try {
+      const r = await fetch("/api/account/gallery", { credentials: "include" });
+      if (r.status === 401) {
+        setAccountEntries([]);
+        return;
+      }
+      const j = r.ok ? await r.json() : { entries: [] };
+      setAccountEntries(j.entries || []);
+    } catch {
+      setAccountEntries([]);
+    } finally {
+      setAccountLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -188,11 +212,34 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const nextHash = currentPage === "browse" ? "#/browse" : (currentPage === "create" ? "#/create" : "#/");
+    const nextHash =
+      currentPage === "browse"
+        ? "#/browse"
+        : currentPage === "create"
+          ? "#/create"
+          : currentPage === "account"
+            ? "#/account"
+            : "#/";
     if (window.location.hash !== nextHash) {
       window.history.replaceState(null, "", nextHash);
     }
   }, [currentPage]);
+
+  useEffect(() => {
+    if (currentPage !== "account" || !authenticated) return;
+    void refreshAccountGallery();
+  }, [currentPage, authenticated, refreshAccountGallery]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const h = window.location.hash;
+      const p =
+        h === "#/browse" ? "browse" : h === "#/create" ? "create" : h === "#/account" ? "account" : "home";
+      setCurrentPage((cur) => (cur === p ? cur : p));
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   useEffect(() => {
     if (currentPage !== "home" || inputValue || landingPasteFocused) return undefined;
@@ -330,18 +377,31 @@ export default function App() {
     return { owner: dn, repo };
   }, [canExport, displayName, selectedRepo, repoList]);
 
-  const exportReleaseLine = useMemo(() => {
-    if (!releaseCreditOn || !creditTarget) return "";
-    const { owner, repo } = creditTarget;
-    const base = `${owner} / ${repo}`;
-    if (releaseFetchState === "loading") return base;
-    if (releaseFetchState === "done" && releaseDetail?.tagName) return `${base} · ${releaseDetail.tagName}`;
-    if (releaseFetchState === "done" && releaseDetail?.name) return `${base} · ${releaseDetail.name}`;
-    return base;
-  }, [releaseCreditOn, creditTarget, releaseFetchState, releaseDetail]);
+  const printFooter = useMemo(() => {
+    const title = footerPrintTitle && displayName.trim() ? displayName.trim() : "";
+    const orgRepo =
+      footerPrintOrgRepo && creditTarget
+        ? `${creditTarget.owner} / ${creditTarget.repo}`
+        : "";
+    let releaseTag = "";
+    if (footerPrintReleaseTag && creditTarget) {
+      if (releaseFetchState === "done" && releaseDetail) {
+        releaseTag = releaseDetail.tagName || releaseDetail.name || "";
+      }
+    }
+    return { title, orgRepo, releaseTag };
+  }, [
+    footerPrintTitle,
+    footerPrintOrgRepo,
+    footerPrintReleaseTag,
+    displayName,
+    creditTarget,
+    releaseFetchState,
+    releaseDetail,
+  ]);
 
   useEffect(() => {
-    if (!releaseCreditOn || !creditTarget) {
+    if (!footerPrintReleaseTag || !creditTarget) {
       setReleaseFetchState("idle");
       setReleaseDetail(null);
       return;
@@ -373,11 +433,113 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [releaseCreditOn, creditTarget, token]);
+  }, [footerPrintReleaseTag, creditTarget, token]);
 
   useEffect(() => {
     setShareMessage(null);
+    setShareToBrowse(false);
   }, [currentGallerySlug, displayName]);
+
+  const toggleShareToBrowse = useCallback(
+    async (checked) => {
+      if (!currentGallerySlug || !pullRequests.length || !authenticated) return;
+      setShareBusy(true);
+      setShareMessage(null);
+      try {
+        if (!checked) {
+          const res = await fetch("/api/gallery/unshare", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ slug: currentGallerySlug }),
+          });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(j.error || `Unshare failed (${res.status})`);
+          }
+          setShareToBrowse(false);
+          setShareMessage("Removed from the Browse gallery.");
+          await refreshGallery();
+          return;
+        }
+        const res = await fetch("/api/gallery/share", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slug: currentGallerySlug,
+            displayName: displayName.trim(),
+            pullRequests,
+          }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(j.error || `Share failed (${res.status})`);
+        }
+        addGalleryEntry({
+          slug: currentGallerySlug,
+          displayName: displayName.trim(),
+          prCount: pullRequests.length,
+        });
+        setShareToBrowse(true);
+        setShareMessage("Published — open Browse to see it in the gallery.");
+        await refreshGallery();
+      } catch (e) {
+        setShareMessage(`Error — ${e.message || "request failed"}`);
+      } finally {
+        setShareBusy(false);
+      }
+    },
+    [
+      authenticated,
+      currentGallerySlug,
+      displayName,
+      pullRequests,
+      refreshGallery,
+    ],
+  );
+
+  const handleAccountEntryOpen = useCallback((entry) => {
+    setData({ pullRequests: entry.pullRequests, repos: [] });
+    setDisplayName(entry.displayName);
+    setSelectedRepo(null);
+    setCurrentPage("create");
+    setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
+  }, []);
+
+  const handleAccountOrderPrint = useCallback((entry) => {
+    setData({ pullRequests: entry.pullRequests, repos: [] });
+    setDisplayName(entry.displayName);
+    setSelectedRepo(null);
+    setCurrentPage("create");
+    setShowPrintPanel(true);
+    setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
+  }, []);
+
+  const handleAccountUnshare = useCallback(
+    async (slug) => {
+      setShareBusy(true);
+      try {
+        const res = await fetch("/api/gallery/unshare", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(j.error || `Unshare failed (${res.status})`);
+        }
+        await refreshAccountGallery();
+        await refreshGallery();
+      } catch (e) {
+        setShareMessage(`Error — ${e.message || "could not remove"}`);
+      } finally {
+        setShareBusy(false);
+      }
+    },
+    [refreshAccountGallery, refreshGallery],
+  );
 
   const isMediumUp = viewportWidth >= 900;
   const isLargeUp = viewportWidth >= 1280;
@@ -533,13 +695,7 @@ export default function App() {
     if (!rings.length) return;
     setExporting(true);
     try {
-      await downloadHighResPNG(
-        rings,
-        {},
-        displayName,
-        displayName.replace(/\//g, "-"),
-        exportReleaseLine,
-      );
+      await downloadHighResPNG(rings, {}, printFooter, displayName.replace(/\//g, "-"));
     } finally {
       setExporting(false);
     }
@@ -547,8 +703,7 @@ export default function App() {
 
   const handlePrintOrder = async ({ size, paper, total }) => {
     if (!rings.length) return;
-    // 1. Export high-res PNG
-    const blob = await exportHighResPNG(rings, {}, displayName, exportReleaseLine);
+    const blob = await exportHighResPNG(rings, {}, printFooter);
     // 2. Upload to Vercel Blob
     const uploadRes = await fetch("/api/print/upload-image", {
       method: "POST",
@@ -569,39 +724,6 @@ export default function App() {
     window.location.href = url;
   };
 
-  const handleShareToGallery = useCallback(async () => {
-    if (!currentGallerySlug || !pullRequests.length || !authenticated) return;
-    setShareBusy(true);
-    setShareMessage(null);
-    try {
-      const res = await fetch("/api/gallery/share", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          slug: currentGallerySlug,
-          displayName: displayName.trim(),
-          pullRequests,
-        }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(j.error || `Share failed (${res.status})`);
-      }
-      addGalleryEntry({
-        slug: currentGallerySlug,
-        displayName: displayName.trim(),
-        prCount: pullRequests.length,
-      });
-      setShareMessage("Published — open Browse to see it in the gallery.");
-      await refreshGallery();
-    } catch (e) {
-      setShareMessage(`Error — ${e.message || "could not share"}`);
-    } finally {
-      setShareBusy(false);
-    }
-  }, [authenticated, currentGallerySlug, displayName, pullRequests, refreshGallery]);
-
   const GrowLoadingIcon = GROW_LOADING_SEQUENCE[growLoadingIdx];
 
   return (
@@ -616,6 +738,11 @@ export default function App() {
             <div style={styles.navLinks}>
               <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("create")}>Create</button>
               <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("browse")}>Browse</button>
+              {authenticated && (
+                <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("account")}>
+                  Account
+                </button>
+              )}
             </div>
           </div>
           <div style={styles.galleryLead}>
@@ -639,6 +766,11 @@ export default function App() {
           <div style={styles.navLinks}>
             <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("create")}>Create</button>
             <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("browse")}>Browse</button>
+            {authenticated && (
+              <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("account")}>
+                Account
+              </button>
+            )}
           </div>
         </div>
 
@@ -793,99 +925,66 @@ export default function App() {
               >
                 <div style={styles.createStepHead}>
                   <span style={styles.createStepBadge}>3</span>
-                  <h3 style={styles.createStepTitle}>Download or print</h3>
+                  <h3 style={styles.createStepTitle}>Print footer</h3>
                 </div>
                 <p style={styles.createStepHint}>
                   {canExport
-                    ? "Save a hi-res PNG or order a wall print."
+                    ? "Choose which lines appear under the ring on PNG export and print. Preview updates next to the ring."
                     : "Available once you have live data from step 1 (not demo)."}
                 </p>
-                {canExport && creditTarget && (
-                  <div style={styles.createReleaseCreditBlock}>
-                    <label style={styles.createReleaseCreditLabel}>
+                {canExport && (
+                  <div style={styles.createFooterOptions}>
+                    <label style={styles.createFooterOptionRow}>
                       <input
                         type="checkbox"
-                        checked={releaseCreditOn}
-                        onChange={(e) => setReleaseCreditOn(e.target.checked)}
+                        checked={footerPrintTitle}
+                        onChange={(e) => setFooterPrintTitle(e.target.checked)}
                         style={styles.createReleaseCreditCheckbox}
                       />
-                      <span>
-                        Add org / repo / release tag to the PNG footer (for launches & credits). Uses{" "}
-                        <a
-                          href={`https://github.com/${creditTarget.owner}/${creditTarget.repo}/releases`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={styles.createInlineLink}
-                        >
-                          latest GitHub release
-                        </a>
-                        {displayName.includes("/") ? "" : " — repo filter or your busiest repo if you’re on a user account"}
-                        .
-                      </span>
+                      <span>Title (display name)</span>
                     </label>
-                    {releaseCreditOn && (
+                    {creditTarget && (
+                      <label style={styles.createFooterOptionRow}>
+                        <input
+                          type="checkbox"
+                          checked={footerPrintOrgRepo}
+                          onChange={(e) => setFooterPrintOrgRepo(e.target.checked)}
+                          style={styles.createReleaseCreditCheckbox}
+                        />
+                        <span>
+                          Organization / repo ({creditTarget.owner} / {creditTarget.repo}
+                          {displayName.includes("/") ? "" : " — from filter or busiest repo"})
+                        </span>
+                      </label>
+                    )}
+                    {creditTarget && (
+                      <label style={styles.createFooterOptionRow}>
+                        <input
+                          type="checkbox"
+                          checked={footerPrintReleaseTag}
+                          onChange={(e) => setFooterPrintReleaseTag(e.target.checked)}
+                          style={styles.createReleaseCreditCheckbox}
+                        />
+                        <span>
+                          Latest release tag (
+                          <a
+                            href={`https://github.com/${creditTarget.owner}/${creditTarget.repo}/releases`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={styles.createInlineLink}
+                          >
+                            GitHub releases
+                          </a>
+                          )
+                        </span>
+                      </label>
+                    )}
+                    {footerPrintReleaseTag && creditTarget && (
                       <p style={styles.createReleaseCreditStatus}>
                         {releaseFetchState === "loading" && "Fetching release from GitHub…"}
-                        {releaseFetchState !== "loading" && exportReleaseLine && (
-                          <>
-                            <span style={styles.createReleaseCreditPrefix}>PNG second line: </span>
-                            <code style={styles.createReleaseCreditCode}>{exportReleaseLine}</code>
-                            {releaseFetchState === "none" && " — no published release; org/repo only."}
-                            {releaseFetchState === "error" && " — release lookup failed; org/repo only."}
-                          </>
-                        )}
-                      </p>
-                    )}
-                  </div>
-                )}
-                <div style={styles.createActionsRow}>
-                  <button
-                    type="button"
-                    style={styles.createSecondaryBtn}
-                    onClick={handleDownload}
-                    disabled={exporting || !canExport}
-                  >
-                    {exporting ? "Exporting…" : "Download PNG"}
-                  </button>
-                  <button
-                    type="button"
-                    style={styles.createPrimaryBtn}
-                    onClick={() => setShowPrintPanel(true)}
-                    disabled={!canExport}
-                  >
-                    Order Print
-                  </button>
-                </div>
-                {canExport && (
-                  <div style={styles.createShareBlock}>
-                    <button
-                      type="button"
-                      style={styles.createShareBtn}
-                      onClick={handleShareToGallery}
-                      disabled={!authenticated || shareBusy}
-                    >
-                      {shareBusy ? (
-                        "Publishing…"
-                      ) : (
-                        <>
-                          <Share2 size={16} strokeWidth={2} aria-hidden style={{ marginRight: 8 }} />
-                          Share on Browse
-                        </>
-                      )}
-                    </button>
-                    <p style={styles.createShareHint}>
-                      {authenticated
-                        ? "Saves the ring you see now (including repo filter) to the shared gallery in Vercel KV for everyone on Browse."
-                        : "Sign in with GitHub to publish this tree to the public Browse gallery."}
-                    </p>
-                    {shareMessage && (
-                      <p
-                        style={{
-                          ...styles.createShareMessage,
-                          ...(shareMessage.startsWith("Error") ? styles.createShareMessageErr : null),
-                        }}
-                      >
-                        {shareMessage}
+                        {releaseFetchState === "none" && "No published release — release line will be omitted."}
+                        {releaseFetchState === "error" && "Release lookup failed — release line will be omitted."}
+                        {releaseFetchState === "done" && !releaseDetail && "No release data — line omitted."}
                       </p>
                     )}
                   </div>
@@ -906,6 +1005,89 @@ export default function App() {
               )}
               {loading && <div style={styles.loadingOverlay}>Loading…</div>}
             </div>
+            {canExport && (footerPrintTitle || footerPrintOrgRepo || footerPrintReleaseTag) && (
+              <div style={styles.printFooterPreviewWrap} aria-label="Print footer preview">
+                <div style={styles.printFooterPreviewLabel}>Print footer</div>
+                <div style={styles.printFooterPreviewPaper}>
+                  {footerPrintTitle && (
+                    <div style={styles.printFooterPreviewTitle}>{displayName}</div>
+                  )}
+                  {footerPrintOrgRepo && creditTarget && (
+                    <div style={styles.printFooterPreviewOrg}>
+                      {creditTarget.owner} / {creditTarget.repo}
+                    </div>
+                  )}
+                  {footerPrintReleaseTag && creditTarget && (
+                    <>
+                      {releaseFetchState === "loading" && (
+                        <div style={styles.printFooterPreviewMuted}>Loading release…</div>
+                      )}
+                      {releaseFetchState === "done" && (releaseDetail?.tagName || releaseDetail?.name) && (
+                        <div style={styles.printFooterPreviewRelease}>
+                          {releaseDetail.tagName || releaseDetail.name}
+                        </div>
+                      )}
+                      {(releaseFetchState === "none"
+                        || releaseFetchState === "error"
+                        || (releaseFetchState === "done"
+                          && !(releaseDetail?.tagName || releaseDetail?.name))) && (
+                        <div style={styles.printFooterPreviewMuted}>No release tag</div>
+                      )}
+                    </>
+                  )}
+                  <div style={styles.printFooterPreviewSub}>
+                    {pullRequests.length} contributions · dendrochronology
+                  </div>
+                </div>
+              </div>
+            )}
+            <div style={styles.createActionsRowBelowViz}>
+              <button
+                type="button"
+                style={styles.createSecondaryBtn}
+                onClick={handleDownload}
+                disabled={exporting || !canExport}
+              >
+                {exporting ? "Exporting…" : "Download PNG"}
+              </button>
+              <button
+                type="button"
+                style={styles.createPrimaryBtn}
+                onClick={() => setShowPrintPanel(true)}
+                disabled={!canExport}
+              >
+                Order Print
+              </button>
+            </div>
+            {canExport && (
+              <div style={styles.createShareBlockBelowViz}>
+                <label style={styles.createShareCheckboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={shareToBrowse}
+                    disabled={!authenticated || shareBusy}
+                    onChange={(e) => void toggleShareToBrowse(e.target.checked)}
+                    style={styles.createReleaseCreditCheckbox}
+                  />
+                  <span>Add to public Browse gallery</span>
+                </label>
+                <p style={styles.createShareHint}>
+                  {authenticated
+                    ? "Anyone can open shared trees from Browse. Uncheck to remove the current slug from the gallery."
+                    : "Sign in with GitHub to publish this tree to the public Browse gallery."}
+                </p>
+                {shareMessage && (
+                  <p
+                    style={{
+                      ...styles.createShareMessage,
+                      ...(shareMessage.startsWith("Error") ? styles.createShareMessageErr : null),
+                    }}
+                  >
+                    {shareMessage}
+                  </p>
+                )}
+              </div>
+            )}
             <div style={styles.infoAreaCreate}>
               <span>{pullRequests.length} pull request{pullRequests.length !== 1 ? "s" : ""}</span>
               <span style={styles.infoDividerCreate}>·</span>
@@ -916,6 +1098,91 @@ export default function App() {
           </div>
         </div>
       </section>
+      ) : currentPage === "account" ? (
+        <section style={styles.browsePage}>
+          <div style={styles.browseTopBar}>
+            <button type="button" style={styles.navTitleBtn} onClick={() => setCurrentPage("home")}>
+              Dendrocode
+            </button>
+            <div style={styles.navLinks}>
+              <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("create")}>
+                Create
+              </button>
+              <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("browse")}>
+                Browse
+              </button>
+              {authenticated && (
+                <button type="button" style={styles.navLinkBtnActive} onClick={() => setCurrentPage("account")}>
+                  Account
+                </button>
+              )}
+            </div>
+          </div>
+          <div style={styles.accountPageInner}>
+            <h2 style={styles.galleryTitle}>Your account</h2>
+            <p style={styles.gallerySub}>Trees you’ve shared to the Browse gallery.</p>
+            {!authenticated ? (
+              <div style={styles.accountSignInArea}>
+                <p style={styles.createStepHint}>Sign in with GitHub to see your shared trees.</p>
+                <AuthButton onAuthChange={setAuthenticated} returnTo="account" />
+              </div>
+            ) : accountLoading ? (
+              <p style={styles.createStepHint}>Loading…</p>
+            ) : accountEntries.length === 0 ? (
+              <p style={styles.createStepHint}>Nothing shared yet. Create a ring and check “Add to public Browse gallery.”</p>
+            ) : (
+              <ul style={styles.accountEntryList}>
+                {accountEntries.map((entry) => (
+                  <li key={entry.slug} style={styles.accountEntryCard}>
+                    <div style={styles.accountEntryMain}>
+                      <div style={styles.accountEntryTitle}>{entry.displayName}</div>
+                      <div style={styles.accountEntryMeta}>
+                        {entry.prCount ?? entry.pullRequests?.length ?? 0} contributions · {entry.slug}
+                      </div>
+                    </div>
+                    <div style={styles.accountEntryActions}>
+                      <button
+                        type="button"
+                        style={styles.createSecondaryBtn}
+                        onClick={() => handleAccountEntryOpen(entry)}
+                        disabled={shareBusy}
+                      >
+                        Open in Create
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.createPrimaryBtn}
+                        onClick={() => handleAccountOrderPrint(entry)}
+                        disabled={shareBusy}
+                      >
+                        Order print
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.accountUnshareBtn}
+                        onClick={() => void handleAccountUnshare(entry.slug)}
+                        disabled={shareBusy}
+                      >
+                        Unshare
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {shareMessage && (
+              <p
+                style={{
+                  ...styles.createShareMessage,
+                  ...(shareMessage.startsWith("Error") ? styles.createShareMessageErr : null),
+                  marginTop: 16,
+                }}
+              >
+                {shareMessage}
+              </p>
+            )}
+          </div>
+        </section>
       ) : (
       <>
       <section ref={heroRef} style={styles.hero}>
@@ -1061,6 +1328,13 @@ export default function App() {
           onClose={() => setShowPrintPanel(false)}
           onOrder={handlePrintOrder}
           displayName={displayName}
+          ringPreview={{
+            pullRequests,
+            username: displayName,
+            repoName: selectedRepo,
+            size: Math.round(Math.min(340, chartSize)),
+          }}
+          printFooter={printFooter}
         />
       )}
 
@@ -1161,6 +1435,20 @@ const styles = {
     textDecoration: "underline",
     textUnderlineOffset: 3,
     textDecorationColor: "rgba(45, 106, 79, 0.45)",
+  },
+  navLinkBtnActive: {
+    border: "none",
+    background: "none",
+    cursor: "pointer",
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: "0.02em",
+    color: "#14532d",
+    fontFamily: "inherit",
+    padding: 0,
+    textDecoration: "underline",
+    textUnderlineOffset: 3,
+    textDecorationColor: "rgba(20, 83, 45, 0.55)",
   },
   heroInner: {
     display: "flex",
@@ -1622,6 +1910,26 @@ const styles = {
     color: "#2563eb",
     textUnderlineOffset: 2,
   },
+  createFooterOptions: {
+    marginTop: 4,
+    padding: "12px 14px",
+    background: "#fafafa",
+    border: "1px solid #e4e4e7",
+    borderRadius: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  createFooterOptionRow: {
+    display: "flex",
+    gap: 10,
+    alignItems: "flex-start",
+    fontSize: 13,
+    lineHeight: 1.55,
+    color: "#3f3f46",
+    cursor: "pointer",
+    margin: 0,
+  },
   createActionsRow: {
     display: "flex",
     flexWrap: "wrap",
@@ -1789,6 +2097,141 @@ const styles = {
     padding: "20px 16px",
     overflow: "hidden",
     boxSizing: "border-box",
+  },
+  printFooterPreviewWrap: {
+    marginTop: 4,
+  },
+  printFooterPreviewLabel: {
+    fontSize: 11,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "rgba(82, 82, 91, 0.85)",
+    marginBottom: 6,
+  },
+  printFooterPreviewPaper: {
+    background: "#f5f0eb",
+    border: "1px solid #e4e4e7",
+    borderRadius: 0,
+    padding: "14px 16px 12px",
+    textAlign: "center",
+  },
+  printFooterPreviewTitle: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: "#7a6a58",
+    marginBottom: 6,
+    lineHeight: 1.3,
+  },
+  printFooterPreviewOrg: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#5c4d3f",
+    marginBottom: 4,
+  },
+  printFooterPreviewRelease: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#4a3f35",
+    marginBottom: 4,
+  },
+  printFooterPreviewMuted: {
+    fontSize: 12,
+    color: "#a1a1aa",
+    marginBottom: 4,
+  },
+  printFooterPreviewSub: {
+    fontSize: 11,
+    color: "#a89888",
+    marginTop: 6,
+    paddingTop: 8,
+    borderTop: "1px solid rgba(228, 228, 231, 0.85)",
+  },
+  createActionsRowBelowViz: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+  },
+  createShareBlockBelowViz: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTop: "1px solid #e4e4e7",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  createShareCheckboxRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+    fontSize: 13,
+    color: "#3f3f46",
+    cursor: "pointer",
+    margin: 0,
+    lineHeight: 1.45,
+  },
+  accountPageInner: {
+    maxWidth: 720,
+    margin: "0 auto",
+    padding: "8px 24px 48px",
+  },
+  accountSignInArea: {
+    marginTop: 12,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  accountEntryList: {
+    listStyle: "none",
+    margin: "16px 0 0",
+    padding: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  },
+  accountEntryCard: {
+    border: "1px solid #e4e4e7",
+    borderRadius: 0,
+    background: "#ffffff",
+    padding: "14px 16px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  },
+  accountEntryMain: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  accountEntryTitle: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: "#18181b",
+  },
+  accountEntryMeta: {
+    fontSize: 12,
+    color: "#71717a",
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  },
+  accountEntryActions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center",
+  },
+  accountUnshareBtn: {
+    padding: "8px 16px",
+    fontSize: 13,
+    fontWeight: 500,
+    borderRadius: 0,
+    border: "1px solid #e4e4e7",
+    background: "#fafafa",
+    color: "#71717a",
+    cursor: "pointer",
+    fontFamily: "inherit",
   },
   infoAreaCreate: {
     fontSize: 12,

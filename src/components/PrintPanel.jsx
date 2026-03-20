@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import TreeRing from "../TreeRing.jsx";
 
 const SIZES = [
   { id: "12x12", label: '12×12"', sku: "GLOBAL-FAP-12x12", price: 49 },
@@ -11,10 +12,8 @@ const PAPERS = [
   { id: "hahnemuhle", label: "Hahnemühle German Etching", surcharge: 30 },
 ];
 
-/**
- * Print configuration panel — size, paper, checkout.
- */
-export default function PrintPanel({ onClose, onOrder, displayName }) {
+/** Size / paper / checkout; optional live ring + footer preview before payment. */
+export default function PrintPanel({ onClose, onOrder, displayName, ringPreview, printFooter }) {
   const [size, setSize] = useState(SIZES[1]);
   const [paper, setPaper] = useState(PAPERS[0]);
   const [ordering, setOrdering] = useState(false);
@@ -41,6 +40,36 @@ export default function PrintPanel({ onClose, onOrder, displayName }) {
         <p style={styles.subtitle}>
           Museum-quality fine art print of {displayName || "your tree ring"}
         </p>
+
+        {ringPreview && (ringPreview.pullRequests?.length > 0) && (
+          <div style={styles.previewBlock}>
+            <div style={styles.previewLabel}>What you’re ordering</div>
+            <div style={styles.previewViz}>
+              <TreeRing
+                pullRequests={ringPreview.pullRequests}
+                username={ringPreview.username || displayName}
+                repoName={ringPreview.repoName}
+                size={ringPreview.size ?? 300}
+              />
+            </div>
+            {printFooter && (printFooter.title || printFooter.orgRepo || printFooter.releaseTag) && (
+              <div style={styles.previewFooter}>
+                {printFooter.title ? (
+                  <div style={styles.previewFooterTitle}>{printFooter.title}</div>
+                ) : null}
+                {printFooter.orgRepo ? (
+                  <div style={styles.previewFooterLine}>{printFooter.orgRepo}</div>
+                ) : null}
+                {printFooter.releaseTag ? (
+                  <div style={styles.previewFooterLine}>{printFooter.releaseTag}</div>
+                ) : null}
+                <div style={styles.previewFooterMeta}>
+                  {ringPreview.pullRequests.length} contributions · included on exported PNG
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Size selector */}
         <div style={styles.section}>
@@ -111,9 +140,56 @@ const styles = {
     background: "#f5f0eb",
     borderRadius: 16,
     padding: "32px",
-    maxWidth: 420,
+    maxWidth: 520,
     width: "90vw",
+    maxHeight: "min(92vh, 900px)",
+    overflowY: "auto",
     boxShadow: "0 20px 60px rgba(0, 0, 0, 0.15)",
+  },
+  previewBlock: {
+    marginBottom: 22,
+    borderRadius: 12,
+    border: "1px solid #e5ddd3",
+    background: "rgba(255, 255, 255, 0.65)",
+    overflow: "hidden",
+  },
+  previewLabel: {
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "#6a5a48",
+    padding: "10px 14px 0",
+  },
+  previewViz: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: "12px 12px 16px",
+    background: "#fffcf8",
+  },
+  previewFooter: {
+    borderTop: "1px solid #ede4d8",
+    padding: "12px 16px 14px",
+    textAlign: "center",
+    background: "rgba(245, 240, 235, 0.9)",
+  },
+  previewFooterTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: "#7a6a58",
+    marginBottom: 4,
+  },
+  previewFooterLine: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: "#5c4d3f",
+    lineHeight: 1.35,
+  },
+  previewFooterMeta: {
+    marginTop: 8,
+    fontSize: 11,
+    color: "#a89888",
   },
   header: {
     display: "flex",

@@ -14,7 +14,12 @@ function parseCookie(cookieHeader, name) {
   }
 }
 
-const HASH_BY_RETURN = { home: "", create: "#/create", browse: "#/browse" };
+const HASH_BY_RETURN = {
+  home: "",
+  create: "#/create",
+  browse: "#/browse",
+  account: "#/account",
+};
 
 /** @param {string} search e.g. "auth=success" or "auth_error=foo" */
 function redirectUrl(cookieHeader, search) {

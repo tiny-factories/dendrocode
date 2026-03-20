@@ -3,7 +3,7 @@
  * Optional ?return= create | browse | home — where to land after OAuth (hash route).
  */
 
-const ALLOWED_RETURN = new Set(["home", "create", "browse"]);
+const ALLOWED_RETURN = new Set(["home", "create", "browse", "account"]);
 
 export default function handler(req, res) {
   const clientId = process.env.GITHUB_CLIENT_ID;
