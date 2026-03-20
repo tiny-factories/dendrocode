@@ -525,7 +525,7 @@ const styles = {
   gridNameOnly: {
     gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))",
     columnGap: 16,
-    rowGap: 72,
+    rowGap: 56,
   },
   gridCompact: {
     gridTemplateColumns: "1fr",
@@ -540,7 +540,7 @@ const styles = {
     justifyContent: "center",
   },
   cardSlotBrowseStamp: {
-    minHeight: 168,
+    minHeight: 152,
     paddingBottom: 8,
     alignItems: "center",
     justifyContent: "center",
