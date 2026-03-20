@@ -6,14 +6,14 @@ export const PRINT_CORNER_SLOT_IDS = ["tl", "tr", "bl", "br"];
 export const PRINT_CORNER_OPTIONS = [
   { value: "none", label: "Empty" },
   { value: "name", label: "Display name" },
-  { value: "contributions", label: "Contributions" },
+  { value: "contributions", label: "Tagline" },
   { value: "dateRange", label: "Date range" },
   { value: "orgRepo", label: "Org / repo" },
   { value: "releaseTag", label: "Release tag" },
   { value: "printSpec", label: "Print size & paper" },
 ];
 
-/** Default corner placement: name top-left, date top-right, contributions bottom-left, print spec bottom-right. */
+/** Default corner placement: name top-left, date top-right, tagline bottom-left, print spec bottom-right. */
 export const PRINT_CORNER_DEFAULTS = /** @type {Record<string, PrintCornerAttr>} */ ({
   tl: "name",
   tr: "dateRange",
