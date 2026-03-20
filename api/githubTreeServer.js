@@ -12,6 +12,19 @@ export function ghHeaders(token) {
   return h;
 }
 
+/** Limit parallel GitHub calls so serverless handlers stay within time/memory limits. */
+const PR_DETAIL_BATCH = 18;
+
+async function allSettledInBatches(items, batchSize, mapper) {
+  const results = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const slice = items.slice(i, i + batchSize);
+    const batch = await Promise.allSettled(slice.map((item) => mapper(item)));
+    results.push(...batch);
+  }
+  return results;
+}
+
 export async function fetchAllPages(url, opts, maxPages = 10) {
   const all = [];
   let pageurl = url;
@@ -42,7 +55,7 @@ export async function fetchUserPRs(username, token) {
     opts,
     hasAuth ? 3 : 1,
   );
-  const topRepos = repos.filter((r) => !r.fork).slice(0, hasAuth ? 30 : 15);
+  const topRepos = repos.filter((r) => !r.fork).slice(0, hasAuth ? 22 : 15);
 
   const prResults = await Promise.allSettled(
     topRepos.map(async (repo) => {
@@ -62,25 +75,24 @@ export async function fetchUserPRs(username, token) {
 
   let allPRs = prResults.filter((r) => r.status === "fulfilled").flatMap((r) => r.value);
   allPRs.sort((a, b) => new Date(a.mergedAt) - new Date(b.mergedAt));
-  allPRs = allPRs.slice(-(hasAuth ? 200 : 80));
+  /* Keep caps modest so /api/tree finishes within serverless timeouts (e.g. 10s Hobby). */
+  allPRs = allPRs.slice(-(hasAuth ? 100 : 80));
 
-  const detailResults = await Promise.allSettled(
-    allPRs.map(async (pr) => {
-      const res = await fetch(
-        `${API}/repos/${encodeURIComponent(username)}/${encodeURIComponent(pr.repo)}/pulls/${pr.number}`,
-        opts,
-      );
-      if (!res.ok) return { ...pr, changedFiles: 1, additions: 0, deletions: 0, commits: 1 };
-      const d = await res.json();
-      return {
-        ...pr,
-        changedFiles: d.changed_files || 1,
-        additions: d.additions || 0,
-        deletions: d.deletions || 0,
-        commits: d.commits || 1,
-      };
-    }),
-  );
+  const detailResults = await allSettledInBatches(allPRs, PR_DETAIL_BATCH, async (pr) => {
+    const res = await fetch(
+      `${API}/repos/${encodeURIComponent(username)}/${encodeURIComponent(pr.repo)}/pulls/${pr.number}`,
+      opts,
+    );
+    if (!res.ok) return { ...pr, changedFiles: 1, additions: 0, deletions: 0, commits: 1 };
+    const d = await res.json();
+    return {
+      ...pr,
+      changedFiles: d.changed_files || 1,
+      additions: d.additions || 0,
+      deletions: d.deletions || 0,
+      commits: d.commits || 1,
+    };
+  });
 
   return detailResults.filter((r) => r.status === "fulfilled").map((r) => r.value);
 }
@@ -95,7 +107,7 @@ export async function fetchRepoPRs(owner, repo, token, opts = {}) {
   const { maxMerged } = opts;
   const fetchOpts = { headers: ghHeaders(token) };
   const hasAuth = !!token;
-  const cap = typeof maxMerged === "number" ? maxMerged : hasAuth ? 500 : 80;
+  const cap = typeof maxMerged === "number" ? maxMerged : hasAuth ? 200 : 80;
 
   const allPRs = await fetchAllPages(
     `${API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=closed&per_page=100&sort=updated&direction=desc`,
@@ -109,23 +121,21 @@ export async function fetchRepoPRs(owner, repo, token, opts = {}) {
   merged.sort((a, b) => new Date(a.mergedAt) - new Date(b.mergedAt));
   merged = merged.slice(-cap);
 
-  const detailResults = await Promise.allSettled(
-    merged.map(async (pr) => {
-      const r = await fetch(
-        `${API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pr.number}`,
-        fetchOpts,
-      );
-      if (!r.ok) return { ...pr, changedFiles: 1, additions: 0, deletions: 0, commits: 1 };
-      const d = await r.json();
-      return {
-        ...pr,
-        changedFiles: d.changed_files || 1,
-        additions: d.additions || 0,
-        deletions: d.deletions || 0,
-        commits: d.commits || 1,
-      };
-    }),
-  );
+  const detailResults = await allSettledInBatches(merged, PR_DETAIL_BATCH, async (pr) => {
+    const r = await fetch(
+      `${API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pr.number}`,
+      fetchOpts,
+    );
+    if (!r.ok) return { ...pr, changedFiles: 1, additions: 0, deletions: 0, commits: 1 };
+    const d = await r.json();
+    return {
+      ...pr,
+      changedFiles: d.changed_files || 1,
+      additions: d.additions || 0,
+      deletions: d.deletions || 0,
+      commits: d.commits || 1,
+    };
+  });
 
   return detailResults.filter((r) => r.status === "fulfilled").map((r) => r.value);
 }

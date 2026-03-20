@@ -78,7 +78,6 @@ export default async function handler(req, res) {
     if (kv && !userToken) {
       try {
         await kv.set(cacheKey, result, { ex: DEFAULT_TREE_TTL_SECONDS });
-        await kv.zadd("gallery:index", { score: Date.now(), member: slug });
       } catch (e) {
         console.error("KV write error:", e.message);
       }

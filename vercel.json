@@ -5,6 +5,9 @@
   "functions": {
     "api/cron/refresh-popular-gallery.js": {
       "maxDuration": 60
+    },
+    "api/tree/[slug].js": {
+      "maxDuration": 60
     }
   },
   "crons": [

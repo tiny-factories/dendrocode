@@ -20,7 +20,41 @@ import {
   Footprints,
   TreeDeciduous,
   Sun,
+  CircleUser,
 } from "lucide-react";
+
+/** Browse / Create / Account top bar: Sign in link, or account icon when authenticated. */
+function TopBarNavAuth({ authenticated, currentPage, setCurrentPage, styles: navStyles }) {
+  const returnTo =
+    currentPage === "browse" ? "browse"
+      : currentPage === "create" ? "create"
+        : currentPage === "account" ? "account"
+          : "home";
+  const loginHref = `/api/auth/login?return=${encodeURIComponent(returnTo)}`;
+
+  if (!authenticated) {
+    return (
+      <a href={loginHref} style={navStyles.navSignIn}>
+        Sign in
+      </a>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      style={{
+        ...navStyles.navAccountIconBtn,
+        ...(currentPage === "account" ? navStyles.navAccountIconBtnActive : null),
+      }}
+      onClick={() => setCurrentPage("account")}
+      aria-label="Account"
+      title="Account"
+    >
+      <CircleUser size={22} strokeWidth={1.75} aria-hidden />
+    </button>
+  );
+}
 
 const GITHUB_PATH_SKIP_SECOND = new Set([
   "pull", "issues", "commits", "tree", "blob", "actions", "discussions", "settings",
@@ -738,11 +772,12 @@ export default function App() {
             <div style={styles.navLinks}>
               <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("create")}>Create</button>
               <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("browse")}>Browse</button>
-              {authenticated && (
-                <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("account")}>
-                  Account
-                </button>
-              )}
+              <TopBarNavAuth
+                authenticated={authenticated}
+                currentPage={currentPage}
+                setCurrentPage={setCurrentPage}
+                styles={styles}
+              />
             </div>
           </div>
           <div style={styles.galleryLead}>
@@ -766,11 +801,12 @@ export default function App() {
           <div style={styles.navLinks}>
             <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("create")}>Create</button>
             <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("browse")}>Browse</button>
-            {authenticated && (
-              <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("account")}>
-                Account
-              </button>
-            )}
+            <TopBarNavAuth
+              authenticated={authenticated}
+              currentPage={currentPage}
+              setCurrentPage={setCurrentPage}
+              styles={styles}
+            />
           </div>
         </div>
 
@@ -1111,20 +1147,29 @@ export default function App() {
               <button type="button" style={styles.navLinkBtn} onClick={() => setCurrentPage("browse")}>
                 Browse
               </button>
-              {authenticated && (
-                <button type="button" style={styles.navLinkBtnActive} onClick={() => setCurrentPage("account")}>
-                  Account
-                </button>
-              )}
+              <TopBarNavAuth
+                authenticated={authenticated}
+                currentPage={currentPage}
+                setCurrentPage={setCurrentPage}
+                styles={styles}
+              />
             </div>
           </div>
           <div style={styles.accountPageInner}>
-            <h2 style={styles.galleryTitle}>Your account</h2>
-            <p style={styles.gallerySub}>Trees you’ve shared to the Browse gallery.</p>
+            <div style={styles.accountPageTitleRow}>
+              <div>
+                <h2 style={styles.galleryTitle}>Your account</h2>
+                <p style={styles.gallerySub}>Trees you’ve shared to the Browse gallery.</p>
+              </div>
+              {authenticated && (
+                <a href="/api/auth/logout" style={styles.accountSignOut}>
+                  Sign out
+                </a>
+              )}
+            </div>
             {!authenticated ? (
               <div style={styles.accountSignInArea}>
-                <p style={styles.createStepHint}>Sign in with GitHub to see your shared trees.</p>
-                <AuthButton onAuthChange={setAuthenticated} returnTo="account" />
+                <p style={styles.createStepHint}>Sign in with GitHub (top right) to see your shared trees.</p>
               </div>
             ) : accountLoading ? (
               <p style={styles.createStepHint}>Loading…</p>
@@ -1436,19 +1481,33 @@ const styles = {
     textUnderlineOffset: 3,
     textDecorationColor: "rgba(45, 106, 79, 0.45)",
   },
-  navLinkBtnActive: {
+  navSignIn: {
+    fontSize: 13,
+    fontWeight: 600,
+    letterSpacing: "0.02em",
+    color: "#2d6a4f",
+    fontFamily: "inherit",
+    textDecoration: "underline",
+    textUnderlineOffset: 3,
+    textDecorationColor: "rgba(45, 106, 79, 0.45)",
+  },
+  navAccountIconBtn: {
     border: "none",
     background: "none",
     cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 700,
-    letterSpacing: "0.02em",
+    padding: "4px 2px",
+    margin: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#2d6a4f",
+    borderRadius: 8,
+    lineHeight: 0,
+  },
+  navAccountIconBtnActive: {
     color: "#14532d",
-    fontFamily: "inherit",
-    padding: 0,
-    textDecoration: "underline",
-    textUnderlineOffset: 3,
-    textDecorationColor: "rgba(20, 83, 45, 0.55)",
+    boxShadow: "inset 0 0 0 1px rgba(45, 106, 79, 0.35)",
+    background: "rgba(45, 106, 79, 0.06)",
   },
   heroInner: {
     display: "flex",
@@ -2176,6 +2235,22 @@ const styles = {
     maxWidth: 720,
     margin: "0 auto",
     padding: "8px 24px 48px",
+  },
+  accountPageTitleRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  accountSignOut: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: "#71717a",
+    textDecoration: "underline",
+    textUnderlineOffset: 3,
+    textDecorationColor: "rgba(113, 113, 122, 0.45)",
+    paddingTop: 4,
   },
   accountSignInArea: {
     marginTop: 12,
