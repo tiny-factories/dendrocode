@@ -1,3 +1,5 @@
+import "../lib/loadLocalEnv.js";
+
 /**
  * GET /api/github/release-latest?owner=&repo=
  * Uses gh_token cookie (OAuth) or GITHUB_TOKEN for GitHub API rate limits.

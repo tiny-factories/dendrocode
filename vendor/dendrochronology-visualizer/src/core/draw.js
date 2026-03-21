@@ -43,7 +43,9 @@ export function drawDendroRings(ctx, rings, opts = {}) {
   const sc = totalRawWidth > availableRadius ? availableRadius / totalRawWidth : 1;
   const ringWidths = rawWidths.map((w) => w * sc);
 
-  ctx.clearRect(0, 0, size, size);
+  // Full-bleed paper (not clearRect) so PNG export and corners stay opaque with palette.background
+  ctx.fillStyle = palette.background;
+  ctx.fillRect(0, 0, size, size);
 
   const totalRingRadius = ringWidths.reduce((s, w) => s + w, 0);
   const treeRadius = Math.min(coreRadius + totalRingRadius + 6, maxRadius);

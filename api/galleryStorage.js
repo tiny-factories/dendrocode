@@ -1,3 +1,5 @@
+import "./lib/loadLocalEnv.js";
+
 /**
  * Shared gallery persistence: prefer Vercel KV when KV_* env is set, else Vercel Blob (BLOB_READ_WRITE_TOKEN).
  */

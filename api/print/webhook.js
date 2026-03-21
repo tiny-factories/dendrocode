@@ -1,3 +1,5 @@
+import "../lib/loadLocalEnv.js";
+
 /**
  * POST /api/print/webhook
  * Stripe webhook — on successful payment, creates a Prodigi order.

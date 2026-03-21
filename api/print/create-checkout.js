@@ -1,3 +1,5 @@
+import "../lib/loadLocalEnv.js";
+
 /**
  * POST /api/print/create-checkout
  * Creates a Stripe Checkout session for a print order.

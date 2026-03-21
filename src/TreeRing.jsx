@@ -26,12 +26,24 @@ export default function TreeRing({
       size={size}
       options={options}
       interactive={interactive}
-      renderTooltip={(ring, index, x, y) => (
+      renderTooltip={(ring, index, clientX, clientY) => {
+        const pad = 8;
+        const estW = 280;
+        const estH = 120;
+        const left = Math.min(
+          Math.max(clientX + 12, pad),
+          window.innerWidth - estW - pad,
+        );
+        const top = Math.min(
+          Math.max(clientY - 60, pad),
+          window.innerHeight - estH - pad,
+        );
+        return (
         <div
           style={{
-            position: "absolute",
-            left: Math.min(Math.max(x + 12, 8), window.innerWidth - 320),
-            top: Math.max(y - 60, 8),
+            position: "fixed",
+            left,
+            top,
             background: "rgba(58, 48, 40, 0.94)",
             color: "#f5f0eb",
             padding: "10px 14px",
@@ -39,7 +51,7 @@ export default function TreeRing({
             fontSize: 12,
             pointerEvents: "none",
             whiteSpace: "nowrap",
-            zIndex: 10,
+            zIndex: 10000,
             border: "1px solid rgba(138, 106, 72, 0.4)",
             lineHeight: 1.6,
             maxWidth: 280,
@@ -54,7 +66,8 @@ export default function TreeRing({
             {ring.meta.details}
           </div>
         </div>
-      )}
+        );
+      }}
     />
   );
 }

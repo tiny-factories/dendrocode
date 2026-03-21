@@ -1228,95 +1228,97 @@ export default function App() {
           </div>
 
           <div style={styles.createRight}>
-            <div style={styles.createRightStepHead}>
-              <div style={styles.createStepHead}>
-                <span style={styles.createStepBadge}>2</span>
-                <h3 style={styles.createStepTitle} id="create-step-2-heading">
-                  Preview
-                </h3>
-              </div>
-              <p
-                style={{
-                  ...styles.createStepHint,
-                  ...styles.createRightStepHint,
-                }}
-              >
-                {!data
-                  ? "Complete Import to generate a ring here."
-                  : repoList.length > 1 && displayName !== "demo"
-                    ? "Switch modes in the Export panel below Import. Filter by repo in Import when several repos apply."
-                    : "Switch Explore / Print & export in the Export panel—print view matches your PNG export."}
-              </p>
-            </div>
-            <div
-              style={{
-                width: "100%",
-                maxWidth: "100%",
-                minWidth: 0,
-                marginLeft: "auto",
-                marginRight: "auto",
-              }}
-              role="region"
-              aria-labelledby="create-step-2-heading"
-            >
-              {data ? (
-                <>
-                  {createPreviewMode === "explore" ? (
-                    <CreateExplorePreviewBlock
-                      targetMaxPx={printPreviewSheetPx}
-                      onShellWidth={reportPreviewFaceW}
-                      ringSize={createPageRingSize}
-                      pullRequests={pullRequests}
-                      displayName={displayName}
-                      repoName={null}
-                      options={dendroPrintOptions}
-                      loading={loading}
-                    />
-                  ) : (
-                    <>
-                      <PrintProductMockup
-                        variant="embedded"
-                        backdrop={printPreviewBackdrop}
-                        printSize={printProductSize}
-                        printPaper={printProductPaper}
-                        facePx={printPreviewSheetPx}
-                        onFaceWidth={reportPreviewFaceW}
-                      >
-                        <div style={styles.createPrintPreviewInner}>
-                          {hasRingData && (
-                            <PrintCornerOverlay
-                              slots={printCornerSlots}
-                              cornerTexts={printCornerTexts}
-                              releaseFetchState={releaseFetchState}
-                            />
-                          )}
-                          <div style={styles.createPrintPreviewRing}>
-                            <TreeRing
-                              pullRequests={pullRequests}
-                              username={displayName}
-                              repoName={null}
-                              size={createPageRingSize}
-                              options={dendroPrintOptions}
-                            />
-                            {loading && <div style={styles.loadingOverlay}>Loading…</div>}
-                          </div>
-                        </div>
-                      </PrintProductMockup>
-                      {hasRingData && (
-                        <PrintCornerEditorBar
-                          slots={printCornerSlots}
-                          cornerTexts={printCornerTexts}
-                          onSlotChange={setPrintCornerSlot}
-                        />
-                      )}
-                    </>
-                  )}
-                </>
-              ) : (
-                <div style={styles.createPrintPreviewPlaceholder}>
-                  {loading ? "Loading…" : "Generate a ring to see the print preview."}
+            <div style={styles.createPanelCard}>
+              <div style={styles.createStep}>
+                <div style={styles.createStepHead}>
+                  <span style={styles.createStepBadge}>2</span>
+                  <h3 style={styles.createStepTitle} id="create-step-2-heading">
+                    Preview
+                  </h3>
                 </div>
-              )}
+                <p
+                  style={{
+                    ...styles.createStepHint,
+                    ...styles.createRightStepHint,
+                  }}
+                >
+                  {!data
+                    ? "Complete Import to generate a ring here."
+                    : repoList.length > 1 && displayName !== "demo"
+                      ? "Switch modes in the Export panel below Import. Filter by repo in Import when several repos apply."
+                      : "Switch Explore / Print & export in the Export panel—print view matches your PNG export."}
+                </p>
+              </div>
+              <div
+                style={{
+                  width: "100%",
+                  maxWidth: "100%",
+                  minWidth: 0,
+                  marginLeft: "auto",
+                  marginRight: "auto",
+                }}
+                role="region"
+                aria-labelledby="create-step-2-heading"
+              >
+                {data ? (
+                  <>
+                    {createPreviewMode === "explore" ? (
+                      <CreateExplorePreviewBlock
+                        targetMaxPx={printPreviewSheetPx}
+                        onShellWidth={reportPreviewFaceW}
+                        ringSize={createPageRingSize}
+                        pullRequests={pullRequests}
+                        displayName={displayName}
+                        repoName={null}
+                        options={dendroPrintOptions}
+                        loading={loading}
+                      />
+                    ) : (
+                      <>
+                        <PrintProductMockup
+                          variant="embedded"
+                          backdrop={printPreviewBackdrop}
+                          printSize={printProductSize}
+                          printPaper={printProductPaper}
+                          facePx={printPreviewSheetPx}
+                          onFaceWidth={reportPreviewFaceW}
+                        >
+                          <div style={styles.createPrintPreviewInner}>
+                            {hasRingData && (
+                              <PrintCornerOverlay
+                                slots={printCornerSlots}
+                                cornerTexts={printCornerTexts}
+                                releaseFetchState={releaseFetchState}
+                              />
+                            )}
+                            <div style={styles.createPrintPreviewRing}>
+                              <TreeRing
+                                pullRequests={pullRequests}
+                                username={displayName}
+                                repoName={null}
+                                size={createPageRingSize}
+                                options={dendroPrintOptions}
+                              />
+                              {loading && <div style={styles.loadingOverlay}>Loading…</div>}
+                            </div>
+                          </div>
+                        </PrintProductMockup>
+                        {hasRingData && (
+                          <PrintCornerEditorBar
+                            slots={printCornerSlots}
+                            cornerTexts={printCornerTexts}
+                            onSlotChange={setPrintCornerSlot}
+                          />
+                        )}
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <div style={styles.createPrintPreviewPlaceholder}>
+                    {loading ? "Loading…" : "Generate a ring to see the print preview."}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2023,14 +2025,7 @@ const styles = {
     maxWidth: "100%",
     display: "flex",
     flexDirection: "column",
-    gap: 10,
-  },
-  createRightStepHead: {
-    width: "100%",
-    maxWidth: 420,
-    marginLeft: "auto",
-    marginRight: "auto",
-    marginBottom: 4,
+    gap: 20,
   },
   createRightStepHint: {
     marginTop: 8,

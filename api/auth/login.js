@@ -3,6 +3,8 @@
  * Optional ?return= create | browse | home — where to land after OAuth (hash route).
  */
 
+import { publicOrigin, secureCookieDirective } from "../lib/cookieSecure.js";
+
 const ALLOWED_RETURN = new Set(["home", "create", "browse", "account"]);
 
 export default function handler(req, res) {
@@ -16,12 +18,19 @@ export default function handler(req, res) {
   // Generate random state for CSRF protection
   const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
+  const sec = secureCookieDirective(req);
   res.setHeader("Set-Cookie", [
-    `oauth_state=${state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`,
-    `oauth_return=${ret}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`,
+    `oauth_state=${state}; HttpOnly${sec}; SameSite=Lax; Path=/; Max-Age=600`,
+    `oauth_return=${ret}; HttpOnly${sec}; SameSite=Lax; Path=/; Max-Age=600`,
   ]);
 
-  const redirectUri = `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}/api/auth/callback`;
+  // Optional: set GITHUB_OAUTH_REDIRECT_ORIGIN in .env.local (e.g. http://localhost:3000) so redirect_uri
+  // matches GitHub's "Authorization callback URL" exactly when Host differs (127.0.0.1 vs localhost, port).
+  const rawOrigin = process.env.GITHUB_OAUTH_REDIRECT_ORIGIN?.trim();
+  const origin = rawOrigin
+    ? rawOrigin.replace(/\/$/, "")
+    : publicOrigin(req);
+  const redirectUri = `${origin}/api/auth/callback`;
 
   const params = new URLSearchParams({
     client_id: clientId,

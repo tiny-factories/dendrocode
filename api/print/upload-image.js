@@ -1,3 +1,5 @@
+import "../lib/loadLocalEnv.js";
+
 /**
  * POST /api/print/upload-image
  * Uploads a print-quality PNG to Vercel Blob storage.

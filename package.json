@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
+    "dev:vercel": "vercel dev",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -15,12 +16,14 @@
   "dependencies": {
     "@vercel/blob": "^2.3.1",
     "@vercel/kv": "^3.0.0",
+    "dotenv": "^17.3.1",
     "lucide-react": "^0.577.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.0.1",
+    "vercel": "^41.0.2",
     "vite": "^8.0.0"
   }
 }

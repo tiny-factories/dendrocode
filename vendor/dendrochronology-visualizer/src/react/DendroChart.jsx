@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { drawDendroRings } from "../core/draw.js";
 import { hitTest, clientToCanvasDistance } from "../core/hitZones.js";
 
@@ -13,7 +14,7 @@ const DEFAULT_SIZE = 600;
  * @param {boolean} [props.interactive=true]
  * @param {(ring: object, index: number) => void} [props.onRingHover]
  * @param {(ring: object, index: number) => void} [props.onRingClick]
- * @param {(ring: object) => React.ReactNode} [props.renderTooltip] - Custom tooltip renderer
+ * @param {(ring: object, index: number, clientX: number, clientY: number) => React.ReactNode} [props.renderTooltip] - Custom tooltip; coords are viewport pixels for use with position:fixed
  * @param {object} [props.options] - Options passed to drawDendroRings
  * @param {object} [props.style] - Style for the wrapper div
  */
@@ -119,7 +120,6 @@ export default function DendroChart({
     const wrapper = wrapperRef.current;
     const canvas = canvasRef.current;
     if (!wrapper || !canvas) return;
-    const wrapperRect = wrapper.getBoundingClientRect();
     const canvasRect = canvas.getBoundingClientRect();
     const { dist } = clientToCanvasDistance(e.clientX, e.clientY, canvasRect, size);
 
@@ -127,8 +127,8 @@ export default function DendroChart({
     if (hit) {
       onRingHover?.(hit.ring, hit.index);
       setTooltip({
-        x: e.clientX - wrapperRect.left,
-        y: e.clientY - wrapperRect.top,
+        clientX: e.clientX,
+        clientY: e.clientY,
         ring: hit.ring,
         index: hit.index,
       });
@@ -157,39 +157,60 @@ export default function DendroChart({
 
   if (!rings.length) return null;
 
-  const defaultTooltipContent = tooltip && !renderTooltip ? (
-    <div style={{
-      position: "absolute",
-      left: Math.min(Math.max(tooltip.x + 12, 8), typeof window !== "undefined" ? window.innerWidth - 320 : 500),
-      top: Math.max(tooltip.y - 60, 8),
-      background: "rgba(58, 48, 40, 0.94)",
-      color: "#f5f0eb",
-      padding: "10px 14px",
-      borderRadius: 8,
-      fontSize: 12,
-      pointerEvents: "none",
-      whiteSpace: "nowrap",
-      zIndex: 10,
-      border: "1px solid rgba(138, 106, 72, 0.4)",
-      lineHeight: 1.6,
-      maxWidth: 280,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-    }}>
-      {tooltip.ring.label && (
-        <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {tooltip.ring.label}
-        </div>
-      )}
-      {tooltip.ring.meta && Object.entries(tooltip.ring.meta).map(([k, v]) => (
-        <div key={k} style={{ fontWeight: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {k}: {v}
-        </div>
-      ))}
-    </div>
-  ) : null;
+  let tooltipPortal = null;
+  if (typeof document !== "undefined" && tooltip) {
+    const pad = 8;
+    const estW = 280;
+    const estH = 140;
+    const vw = typeof window !== "undefined" ? window.innerWidth : 800;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 600;
+    const rawLeft = tooltip.clientX + 12;
+    const rawTop = tooltip.clientY - 60;
+    const left = Math.min(Math.max(rawLeft, pad), vw - estW - pad);
+    const top = Math.min(Math.max(rawTop, pad), vh - estH - pad);
+
+    const node = renderTooltip ? (
+      renderTooltip(tooltip.ring, tooltip.index, tooltip.clientX, tooltip.clientY)
+    ) : (
+      <div
+        style={{
+          position: "fixed",
+          left,
+          top,
+          background: "rgba(58, 48, 40, 0.94)",
+          color: "#f5f0eb",
+          padding: "10px 14px",
+          borderRadius: 8,
+          fontSize: 12,
+          pointerEvents: "none",
+          whiteSpace: "nowrap",
+          zIndex: 10000,
+          border: "1px solid rgba(138, 106, 72, 0.4)",
+          lineHeight: 1.6,
+          maxWidth: 280,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {tooltip.ring.label && (
+          <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {tooltip.ring.label}
+          </div>
+        )}
+        {tooltip.ring.meta &&
+          Object.entries(tooltip.ring.meta).map(([k, v]) => (
+            <div key={k} style={{ fontWeight: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {k}: {v}
+            </div>
+          ))}
+      </div>
+    );
+
+    tooltipPortal = createPortal(node, document.body);
+  }
 
   return (
+    <>
     <div
       ref={wrapperRef}
       style={{
@@ -199,7 +220,7 @@ export default function DendroChart({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        overflow: "hidden",
+        overflow: "visible",
         cursor: interactive ? (zoom > 1 ? (dragging.current ? "grabbing" : "grab") : "crosshair") : "default",
         ...style,
       }}
@@ -210,6 +231,18 @@ export default function DendroChart({
       onClick={onClickHandler}
       onDoubleClick={onDoubleClick}
     >
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          minWidth: 0,
+          minHeight: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+        }}
+      >
       <canvas
         ref={canvasRef}
         style={{
@@ -221,7 +254,7 @@ export default function DendroChart({
           imageRendering: "auto",
         }}
       />
-      {tooltip && renderTooltip ? renderTooltip(tooltip.ring, tooltip.index, tooltip.x, tooltip.y) : defaultTooltipContent}
+      </div>
       {interactive && zoom > 1 && (
         <div style={{
           position: "absolute",
@@ -237,5 +270,7 @@ export default function DendroChart({
         </div>
       )}
     </div>
+    {tooltipPortal}
+    </>
   );
 }

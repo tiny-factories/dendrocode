@@ -5,6 +5,9 @@ import { drawDendroRings } from "dendrochronology-visualizer";
 
 const DEFAULT_EXPORT_PIXELS = 4000;
 
+/** Draw options from `dendroDrawOptionsForPrint` are tuned for this logical size (matches on-screen TreeRing). */
+const EXPORT_LOGICAL_PX = 600;
+
 /**
  * @param {object} cornerTexts
  * @param {string} [cornerTexts.tl]
@@ -50,23 +53,22 @@ function drawCornerLabels(ctx, size, cornerTexts) {
  */
 export async function exportHighResPNG(rings, opts = {}, cornerTexts = {}) {
   const { canvasSize, ...drawOpts } = opts;
-  const size =
+  const outPx =
     typeof canvasSize === "number" && canvasSize > 0 ? Math.round(canvasSize) : DEFAULT_EXPORT_PIXELS;
 
   const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = outPx;
+  canvas.height = outPx;
 
   const ctx = canvas.getContext("2d");
+  const scale = outPx / EXPORT_LOGICAL_PX;
 
-  const paletteBg = drawOpts.palette && typeof drawOpts.palette.background === "string"
-    ? drawOpts.palette.background
-    : "#f5f0eb";
-  ctx.fillStyle = paletteBg;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  drawDendroRings(ctx, rings, { ...drawOpts, size });
-  drawCornerLabels(ctx, size, cornerTexts);
+  // Scale up from print-tuned logical geometry so rings fill the output canvas (options assume ~600px space).
+  ctx.save();
+  ctx.scale(scale, scale);
+  drawDendroRings(ctx, rings, { ...drawOpts, size: EXPORT_LOGICAL_PX });
+  drawCornerLabels(ctx, EXPORT_LOGICAL_PX, cornerTexts);
+  ctx.restore();
 
   return new Promise((resolve) => {
     canvas.toBlob(resolve, "image/png");

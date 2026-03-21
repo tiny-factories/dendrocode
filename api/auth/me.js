@@ -2,6 +2,8 @@
  * GET /api/auth/me — Returns current authenticated user info.
  */
 
+import { secureCookieDirective } from "../lib/cookieSecure.js";
+
 function parseCookie(cookieHeader, name) {
   if (!cookieHeader) return null;
   const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
@@ -25,9 +27,8 @@ export default async function handler(req, res) {
 
     if (!userRes.ok) {
       // Token expired or revoked
-      res.setHeader("Set-Cookie",
-        `gh_token=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`
-      );
+      const sec = secureCookieDirective(req);
+      res.setHeader("Set-Cookie", `gh_token=; HttpOnly${sec}; SameSite=Lax; Path=/; Max-Age=0`);
       return res.status(401).json({ authenticated: false });
     }
 
