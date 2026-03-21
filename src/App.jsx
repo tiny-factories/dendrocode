@@ -246,7 +246,6 @@ export default function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedRepo, setSelectedRepo] = useState(null);
   const [galleryEntries, setGalleryEntries] = useState([]);
   const [authenticated, setAuthenticated] = useState(false);
   const [showPrintPanel, setShowPrintPanel] = useState(false);
@@ -445,7 +444,6 @@ export default function App() {
     const useMode = modeOverride !== undefined && modeOverride !== null ? modeOverride : parsed.mode;
     setLoading(true);
     setError(null);
-    setSelectedRepo(null);
     const slug = useMode === "repo" ? `repo:${clean.replace("/", ":")}` : `user:${clean}`;
 
     // Check cache
@@ -504,7 +502,6 @@ export default function App() {
   const handleGallerySelect = useCallback((entry) => {
     setData({ pullRequests: entry.pullRequests, repos: [] });
     setDisplayName(entry.displayName);
-    setSelectedRepo(null);
     setCurrentPage("create");
     setTimeout(() => {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -526,9 +523,7 @@ export default function App() {
     }
     return Object.values(map).sort((a, b) => b.count - a.count);
   }, [data?.repos, data?.pullRequests]);
-  const pullRequests = selectedRepo
-    ? (data?.pullRequests || []).filter((pr) => pr.repo === selectedRepo)
-    : data?.pullRequests || [];
+  const pullRequests = data?.pullRequests || [];
 
   const rings = useMemo(() => githubPRsToRings(pullRequests), [pullRequests]);
   const hasRingData = pullRequests.length > 0;
@@ -548,10 +543,10 @@ export default function App() {
       const [o, r] = dn.split("/").map((s) => s.trim()).filter(Boolean);
       if (o && r) return { owner: o, repo: r };
     }
-    const repo = selectedRepo || repoList[0]?.name;
+    const repo = repoList[0]?.name;
     if (!repo) return null;
     return { owner: dn, repo };
-  }, [canExport, displayName, selectedRepo, repoList]);
+  }, [canExport, displayName, repoList]);
 
   const dendroPrintOptions = useMemo(
     () => dendroDrawOptionsForPrint(printProductSize, printProductPaper),
@@ -711,7 +706,6 @@ export default function App() {
   const handleAccountEntryOpen = useCallback((entry) => {
     setData({ pullRequests: entry.pullRequests, repos: [] });
     setDisplayName(entry.displayName);
-    setSelectedRepo(null);
     setCurrentPage("create");
     setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
   }, []);
@@ -719,7 +713,6 @@ export default function App() {
   const handleAccountOrderPrint = useCallback((entry) => {
     setData({ pullRequests: entry.pullRequests, repos: [] });
     setDisplayName(entry.displayName);
-    setSelectedRepo(null);
     setCurrentPage("create");
     setShowPrintPanel(true);
     setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
@@ -993,7 +986,7 @@ export default function App() {
             <h2 style={styles.createPageTitle}>Create</h2>
             <p style={styles.createPageSub}>
               {displayName && displayName !== "demo"
-                ? `Showing ${displayName}${selectedRepo ? ` · ${selectedRepo}` : ""}.`
+                ? `Showing ${displayName}.`
                 : "Link or example, preview the ring, then download or print."}
             </p>
           </div>
@@ -1050,7 +1043,7 @@ export default function App() {
 
               </div>
 
-              {(repoList.length > 1 && displayName !== "demo") || displayName === "demo" ? (
+              {displayName === "demo" ? (
                 <div
                   style={{
                     ...styles.createStep,
@@ -1058,39 +1051,7 @@ export default function App() {
                     ...(!hasRingData ? styles.createStepMuted : null),
                   }}
                 >
-                  {repoList.length > 1 && displayName !== "demo" && (
-                    <div style={styles.repoRowCreate}>
-                      <span style={styles.repoRowLabel}>Repo filter</span>
-                      <p style={styles.createStepHint}>
-                        Several repos on this account—filter to one or keep all.
-                      </p>
-                      <div style={styles.repoRowChips}>
-                        <button
-                          type="button"
-                          style={{ ...styles.chipCreate, ...(selectedRepo === null ? styles.chipCreateActive : {}) }}
-                          onClick={() => setSelectedRepo(null)}
-                        >
-                          All
-                        </button>
-                        {repoList.map((repo) => (
-                          <button
-                            key={repo.name}
-                            type="button"
-                            style={{
-                              ...styles.chipCreate,
-                              ...(selectedRepo === repo.name ? styles.chipCreateActive : {}),
-                            }}
-                            onClick={() => setSelectedRepo(repo.name)}
-                          >
-                            {repo.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {displayName === "demo" && (
-                    <p style={styles.demoHintCreate}>Demo data is showing. Use Import for live GitHub data.</p>
-                  )}
+                  <p style={styles.demoHintCreate}>Demo data is showing. Use Import for live GitHub data.</p>
                 </div>
               ) : null}
             </div>
@@ -1307,7 +1268,7 @@ export default function App() {
                       ringSize={createPageRingSize}
                       pullRequests={pullRequests}
                       displayName={displayName}
-                      repoName={selectedRepo}
+                      repoName={null}
                       options={dendroPrintOptions}
                       loading={loading}
                     />
@@ -1333,7 +1294,7 @@ export default function App() {
                             <TreeRing
                               pullRequests={pullRequests}
                               username={displayName}
-                              repoName={selectedRepo}
+                              repoName={null}
                               size={createPageRingSize}
                               options={dendroPrintOptions}
                             />
@@ -1605,7 +1566,7 @@ export default function App() {
           ringPreview={{
             pullRequests,
             username: displayName,
-            repoName: selectedRepo,
+            repoName: null,
           }}
           printCornerTexts={printCornerTexts}
         />
@@ -2357,37 +2318,6 @@ const styles = {
     color: "#f5faf7",
     cursor: "pointer",
     fontFamily: "inherit",
-  },
-  repoRowCreate: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-  },
-  repoRowLabel: {
-    fontSize: 11,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
-    color: "rgba(82, 82, 91, 0.85)",
-  },
-  repoRowChips: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  chipCreate: {
-    padding: "5px 10px",
-    fontSize: 11,
-    borderRadius: 999,
-    border: "1px solid #e4e4e7",
-    background: "#fafafa",
-    color: "#52525b",
-    cursor: "pointer",
-    fontFamily: "inherit",
-  },
-  chipCreateActive: {
-    background: "#18181b",
-    borderColor: "#18181b",
-    color: "#fafafa",
   },
   demoHintCreate: {
     fontSize: 12,
