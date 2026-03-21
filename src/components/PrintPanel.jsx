@@ -88,7 +88,7 @@ export default function PrintPanel({
                 onFaceWidth={setModalFaceMeasured}
               >
                 <div style={styles.previewFaceInner}>
-                  <PrintCornerOverlay mode="read" cornerTexts={printCornerTexts} />
+                  <PrintCornerOverlay cornerTexts={printCornerTexts} />
                   <div style={styles.previewRingPad}>
                     <TreeRing
                       pullRequests={ringPreview.pullRequests}

@@ -1,7 +1,7 @@
 /** Slugs for what can appear in each print-preview / export corner. */
 export const PRINT_CORNER_SLOT_IDS = ["tl", "tr", "bl", "br"];
 
-/** @typedef {'none' | 'name' | 'contributions' | 'dateRange' | 'orgRepo' | 'releaseTag' | 'printSpec'} PrintCornerAttr */
+/** @typedef {'none' | 'name' | 'contributions' | 'dateRange' | 'orgRepo' | 'releaseTag'} PrintCornerAttr */
 
 export const PRINT_CORNER_OPTIONS = [
   { value: "none", label: "Empty" },
@@ -10,15 +10,14 @@ export const PRINT_CORNER_OPTIONS = [
   { value: "dateRange", label: "Date range" },
   { value: "orgRepo", label: "Org / repo" },
   { value: "releaseTag", label: "Release tag" },
-  { value: "printSpec", label: "Print size & paper" },
 ];
 
-/** Default corner placement: name top-left, date top-right, contributions bottom-left, print spec bottom-right. */
+/** Default corner placement: name top-left, date top-right, contributions bottom-left, bottom-right empty. */
 export const PRINT_CORNER_DEFAULTS = /** @type {Record<string, PrintCornerAttr>} */ ({
   tl: "name",
   tr: "dateRange",
   bl: "contributions",
-  br: "printSpec",
+  br: "none",
 });
 
 /**
@@ -44,7 +43,6 @@ export function contributionDateRangeLabel(pullRequests) {
  *   pullRequests: Array<{ mergedAt?: string }>,
  *   releaseFetchState: string,
  *   releaseDetail: { tagName?: string, name?: string } | null,
- *   printSpecLine?: string,
  * }} args
  */
 export function resolvePrintCornerTexts(args) {
@@ -55,7 +53,6 @@ export function resolvePrintCornerTexts(args) {
     pullRequests,
     releaseFetchState,
     releaseDetail,
-    printSpecLine,
   } = args;
 
   const dn = (displayName || "").trim();
@@ -82,8 +79,6 @@ export function resolvePrintCornerTexts(args) {
         return orgRepoLine;
       case "releaseTag":
         return releaseLine;
-      case "printSpec":
-        return printSpecLine || "";
       default:
         return "";
     }

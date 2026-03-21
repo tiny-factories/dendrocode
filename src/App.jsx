@@ -3,6 +3,7 @@ import TreeRing from "./TreeRing.jsx";
 import GallerySection from "./components/GallerySection.jsx";
 import PrintPanel from "./components/PrintPanel.jsx";
 import PrintCornerOverlay from "./components/PrintCornerOverlay.jsx";
+import PrintCornerEditorBar from "./components/PrintCornerEditorBar.jsx";
 import PrintProductMockup from "./components/PrintProductMockup.jsx";
 import LazyDendroStamp from "./components/LazyDendroStamp.jsx";
 import { generateDemoData } from "./github.js";
@@ -14,6 +15,7 @@ import { githubPRsToRings } from "./lib/adapter.js";
 import { downloadHighResPNG, exportHighResPNG } from "./lib/exportImage.js";
 import {
   PRINT_CORNER_DEFAULTS,
+  PRINT_CORNER_SLOT_IDS,
   resolvePrintCornerTexts,
 } from "./lib/printCorners.js";
 import {
@@ -551,11 +553,6 @@ export default function App() {
     return { owner: dn, repo };
   }, [canExport, displayName, selectedRepo, repoList]);
 
-  const printSpecLine = useMemo(
-    () => `${printProductSize.label} · ${printProductPaper.label}`,
-    [printProductSize, printProductPaper],
-  );
-
   const dendroPrintOptions = useMemo(
     () => dendroDrawOptionsForPrint(printProductSize, printProductPaper),
     [printProductSize, printProductPaper],
@@ -578,7 +575,6 @@ export default function App() {
         pullRequests,
         releaseFetchState,
         releaseDetail,
-        printSpecLine,
       }),
     [
       printCornerSlots,
@@ -587,9 +583,22 @@ export default function App() {
       pullRequests,
       releaseFetchState,
       releaseDetail,
-      printSpecLine,
     ],
   );
+
+  useEffect(() => {
+    setPrintCornerSlots((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const id of PRINT_CORNER_SLOT_IDS) {
+        if (next[id] === "printSpec") {
+          next[id] = "none";
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
 
   const setPrintCornerSlot = useCallback((id, value) => {
     setPrintCornerSlots((prev) => ({ ...prev, [id]: value }));
@@ -753,7 +762,6 @@ export default function App() {
     previewFaceMeasuredW > 0
       ? Math.max(120, Math.round(previewFaceMeasuredW * 0.76))
       : createPageRingFallbackCap;
-  const starterExamples = useMemo(() => seedGallery.slice(0, 6), []);
   const landingStampEntries = useMemo(() => {
     const source = seedGallery.slice(0, 10);
     const ringsBySlug = Object.fromEntries(
@@ -887,11 +895,6 @@ export default function App() {
     return () => el.removeEventListener("scroll", onScroll);
   }, [currentPage, landingCanvasItems.patternWidth, landingCanvasItems.patternHeight]);
 
-  const handleStarterSelect = useCallback((entry) => {
-    setInputValue(entry.displayName);
-    loadData(entry.displayName);
-  }, [loadData]);
-
   const handleLandingSubmit = (e) => {
     e.preventDefault();
     const parsed = parseGithubSourceInput(inputValue);
@@ -1004,11 +1007,11 @@ export default function App() {
               <div style={styles.createStep}>
                 <div style={styles.createStepHead}>
                   <span style={styles.createStepBadge}>1</span>
-                  <h3 style={styles.createStepTitle}>GitHub URL or example</h3>
+                  <h3 style={styles.createStepTitle}>Import</h3>
                 </div>
                 <p style={styles.createStepHint}>
                   Paste a URL, <code style={styles.createStepCode}>@user</code>, or{" "}
-                  <code style={styles.createStepCode}>owner/repo</code>—or tap a starter.
+                  <code style={styles.createStepCode}>owner/repo</code>.
                 </p>
                 <form onSubmit={handleSubmit} style={styles.createForm}>
                   <div style={styles.createGithubPasteArea}>
@@ -1045,71 +1048,54 @@ export default function App() {
                   </div>
                 </form>
 
-                <div style={styles.starterRowCreate}>
-                  {starterExamples.map((entry) => (
-                    <button
-                      key={entry.slug}
-                      type="button"
-                      style={styles.starterChipCreate}
-                      onClick={() => handleStarterSelect(entry)}
-                    >
-                      Try {entry.displayName}
-                    </button>
-                  ))}
-                </div>
-
               </div>
 
-              <div
-                style={{
-                  ...styles.createStep,
-                  ...styles.createStepDivider,
-                  ...(hasRingData ? null : styles.createStepMuted),
-                }}
-              >
-                <div style={styles.createStepHead}>
-                  <span style={styles.createStepBadge}>2</span>
-                  <h3 style={styles.createStepTitle}>Preview</h3>
-                </div>
-                <p style={styles.createStepHint}>
-                  {!hasRingData
-                    ? "Generate from step 1—the ring appears on the right."
-                    : repoList.length > 1 && displayName !== "demo"
-                      ? "Several repos on this account—filter to one or keep all."
-                      : "Your ring is on the right."}
-                </p>
-                {repoList.length > 1 && displayName !== "demo" && (
-                  <div style={styles.repoRowCreate}>
-                    <span style={styles.repoRowLabel}>Repo filter</span>
-                    <div style={styles.repoRowChips}>
-                      <button
-                        type="button"
-                        style={{ ...styles.chipCreate, ...(selectedRepo === null ? styles.chipCreateActive : {}) }}
-                        onClick={() => setSelectedRepo(null)}
-                      >
-                        All
-                      </button>
-                      {repoList.map((repo) => (
+              {(repoList.length > 1 && displayName !== "demo") || displayName === "demo" ? (
+                <div
+                  style={{
+                    ...styles.createStep,
+                    ...styles.createStepDivider,
+                    ...(!hasRingData ? styles.createStepMuted : null),
+                  }}
+                >
+                  {repoList.length > 1 && displayName !== "demo" && (
+                    <div style={styles.repoRowCreate}>
+                      <span style={styles.repoRowLabel}>Repo filter</span>
+                      <p style={styles.createStepHint}>
+                        Several repos on this account—filter to one or keep all.
+                      </p>
+                      <div style={styles.repoRowChips}>
                         <button
-                          key={repo.name}
                           type="button"
-                          style={{
-                            ...styles.chipCreate,
-                            ...(selectedRepo === repo.name ? styles.chipCreateActive : {}),
-                          }}
-                          onClick={() => setSelectedRepo(repo.name)}
+                          style={{ ...styles.chipCreate, ...(selectedRepo === null ? styles.chipCreateActive : {}) }}
+                          onClick={() => setSelectedRepo(null)}
                         >
-                          {repo.name}
+                          All
                         </button>
-                      ))}
+                        {repoList.map((repo) => (
+                          <button
+                            key={repo.name}
+                            type="button"
+                            style={{
+                              ...styles.chipCreate,
+                              ...(selectedRepo === repo.name ? styles.chipCreateActive : {}),
+                            }}
+                            onClick={() => setSelectedRepo(repo.name)}
+                          >
+                            {repo.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-                {displayName === "demo" && (
-                  <p style={styles.demoHintCreate}>Demo data is showing. Use step 1 for live GitHub data.</p>
-                )}
-              </div>
+                  )}
+                  {displayName === "demo" && (
+                    <p style={styles.demoHintCreate}>Demo data is showing. Use Import for live GitHub data.</p>
+                  )}
+                </div>
+              ) : null}
+            </div>
 
+            <div style={styles.createExportCard}>
               <div
                 style={{
                   ...styles.createStep,
@@ -1118,94 +1104,12 @@ export default function App() {
               >
                 <div style={styles.createStepHead}>
                   <span style={styles.createStepBadge}>3</span>
-                  <h3 style={styles.createStepTitle}>Print settings</h3>
+                  <h3 style={styles.createStepTitle} id="create-export-panel-heading">
+                    Export
+                  </h3>
                 </div>
-                <p style={styles.createStepHint}>
-                  {!hasRingData
-                    ? "Generate a ring first—then pick size and paper, and (with live data) corner labels for export."
-                    : !canExport
-                      ? "Size and paper update the preview. Hover corners on the print preview to set labels (PNG export and checkout need live GitHub data, not demo)."
-                      : "Size and paper drive preview scale, ring geometry, tone, and PNG pixel size. Hover corners on the preview for labels—bottom-right defaults to your size & paper line."}
-                </p>
                 {hasRingData && (
-                  <div style={styles.createPrintSettingsBlock}>
-                    <span style={styles.createPrintSettingsLabel}>Print size</span>
-                    <div style={styles.createPrintSettingsOptions}>
-                      {PRINT_SIZES.map((s) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          style={{
-                            ...styles.createPrintOption,
-                            ...(printProductSize.id === s.id ? styles.createPrintOptionActive : null),
-                          }}
-                          onClick={() => setPrintProductSize(s)}
-                        >
-                          <span>{s.label}</span>
-                          <span style={styles.createPrintOptionMeta}>${s.price}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <span style={styles.createPrintSettingsLabelPaper}>Paper</span>
-                    <div style={styles.createPrintSettingsOptions}>
-                      {PRINT_PAPERS.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          style={{
-                            ...styles.createPrintOption,
-                            ...(printProductPaper.id === p.id ? styles.createPrintOptionActive : null),
-                          }}
-                          onClick={() => setPrintProductPaper(p)}
-                        >
-                          <span>{p.label}</span>
-                          <span style={styles.createPrintOptionMeta}>
-                            {p.surcharge > 0 ? `+$${p.surcharge}` : "Included"}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                    <label style={styles.createBackdropRow}>
-                      <input
-                        type="checkbox"
-                        checked={printPreviewBackdrop === "gallery"}
-                        onChange={(e) => setPrintPreviewBackdrop(e.target.checked ? "gallery" : "clean")}
-                        style={styles.createBackdropCheckbox}
-                      />
-                      <span>Show room backdrop (neutral gallery wall)</span>
-                    </label>
-                  </div>
-                )}
-                {canExport && wantsReleaseForPrint && creditTarget && (
-                  <p style={styles.createReleaseCreditStatus}>
-                    {releaseFetchState === "loading" && "Fetching release from GitHub…"}
-                    {releaseFetchState === "none" && "No published release — release corner stays empty on export."}
-                    {releaseFetchState === "error" && "Release lookup failed — release corner stays empty on export."}
-                    {releaseFetchState === "done" && !releaseDetail && "No release data — corner stays empty."}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.createRight}>
-            <div
-              style={{
-                width: "100%",
-                maxWidth: "100%",
-                minWidth: 0,
-                marginLeft: "auto",
-                marginRight: "auto",
-              }}
-              aria-label={
-                createPreviewMode === "explore"
-                  ? "Interactive ring preview"
-                  : "Print preview — ring and corner labels as exported"
-              }
-            >
-              {data ? (
-                <>
-                  <div style={styles.createPreviewToggle} role="tablist" aria-label="Preview mode">
+                  <div style={styles.createExportModeToggle} role="tablist" aria-label="Preview mode">
                     <button
                       type="button"
                       role="tab"
@@ -1231,6 +1135,171 @@ export default function App() {
                       Print &amp; export
                     </button>
                   </div>
+                )}
+                <p style={styles.createStepHint}>
+                  {!hasRingData
+                    ? "After Import, pick Explore or Print & export to drive step 2. PNG download and checkout need live GitHub data (not the demo)."
+                    : createPreviewMode === "explore"
+                      ? "Inspect rings in step 2. Switch to Print & export for size, paper, corner labels, PNG, print order, and Browse sharing."
+                      : !canExport
+                        ? "Size and paper update the print preview. Corner labels: panel under the preview (live data only). Download and checkout need live data, not the demo."
+                        : "Size and paper set export resolution. Corner labels: panel under the preview. Download PNG, order a print, or share to Browse."}
+                </p>
+                {hasRingData && createPreviewMode === "print" && (
+                  <div style={styles.createPrintSettingsBlock}>
+                    <label style={styles.createPrintSettingsLabel} htmlFor="create-print-size-select">
+                      Print size
+                    </label>
+                    <select
+                      id="create-print-size-select"
+                      value={printProductSize.id}
+                      onChange={(e) => {
+                        const next = PRINT_SIZES.find((s) => s.id === e.target.value);
+                        if (next) setPrintProductSize(next);
+                      }}
+                      style={styles.createPrintSelect}
+                    >
+                      {PRINT_SIZES.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label} — ${s.price}
+                        </option>
+                      ))}
+                    </select>
+                    <label style={styles.createPrintSettingsLabelPaper} htmlFor="create-print-paper-select">
+                      Paper
+                    </label>
+                    <select
+                      id="create-print-paper-select"
+                      value={printProductPaper.id}
+                      onChange={(e) => {
+                        const next = PRINT_PAPERS.find((p) => p.id === e.target.value);
+                        if (next) setPrintProductPaper(next);
+                      }}
+                      style={styles.createPrintSelect}
+                    >
+                      {PRINT_PAPERS.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                          {p.surcharge > 0 ? ` — +$${p.surcharge}` : " — included"}
+                        </option>
+                      ))}
+                    </select>
+                    <label style={styles.createBackdropRow}>
+                      <input
+                        type="checkbox"
+                        checked={printPreviewBackdrop === "gallery"}
+                        onChange={(e) => setPrintPreviewBackdrop(e.target.checked ? "gallery" : "clean")}
+                        style={styles.createBackdropCheckbox}
+                      />
+                      <span>Show room backdrop (neutral gallery wall)</span>
+                    </label>
+                  </div>
+                )}
+                {canExport && createPreviewMode === "print" && wantsReleaseForPrint && creditTarget && (
+                  <p style={styles.createReleaseCreditStatus}>
+                    {releaseFetchState === "loading" && "Fetching release from GitHub…"}
+                    {releaseFetchState === "none" && "No published release — release corner stays empty on export."}
+                    {releaseFetchState === "error" && "Release lookup failed — release corner stays empty on export."}
+                    {releaseFetchState === "done" && !releaseDetail && "No release data — corner stays empty."}
+                  </p>
+                )}
+                <div
+                  style={styles.createExportActionsRow}
+                  role="group"
+                  aria-labelledby="create-export-panel-heading"
+                >
+                  <button
+                    type="button"
+                    style={styles.createSecondaryBtn}
+                    onClick={handleDownload}
+                    disabled={exporting || !canExport}
+                  >
+                    {exporting ? "Exporting…" : "Download PNG"}
+                  </button>
+                  <button
+                    type="button"
+                    style={styles.createPrimaryBtn}
+                    onClick={() => {
+                      setCreatePreviewMode("print");
+                      setShowPrintPanel(true);
+                    }}
+                    disabled={!canExport}
+                  >
+                    Order Print
+                  </button>
+                </div>
+                {canExport && (
+                  <div style={styles.createShareBlockExport}>
+                    <label style={styles.createShareCheckboxRow}>
+                      <input
+                        type="checkbox"
+                        checked={shareToBrowse}
+                        disabled={!authenticated || shareBusy}
+                        onChange={(e) => void toggleShareToBrowse(e.target.checked)}
+                        style={styles.createReleaseCreditCheckbox}
+                      />
+                      <span>Add to public Browse gallery</span>
+                    </label>
+                    <p style={styles.createShareHint}>
+                      {authenticated
+                        ? "Anyone can open shared trees from Browse. Uncheck to remove the current slug from the gallery."
+                        : "Sign in with GitHub to publish this tree to the public Browse gallery."}
+                    </p>
+                    {shareMessage && (
+                      <p
+                        style={{
+                          ...styles.createShareMessage,
+                          ...(shareMessage.startsWith("Error") ? styles.createShareMessageErr : null),
+                        }}
+                      >
+                        {shareMessage}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div style={styles.infoAreaCreate}>
+                  <span>width = files</span>
+                  <span style={styles.infoDividerCreate}>·</span>
+                  <span>texture = commits</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.createRight}>
+            <div style={styles.createRightStepHead}>
+              <div style={styles.createStepHead}>
+                <span style={styles.createStepBadge}>2</span>
+                <h3 style={styles.createStepTitle} id="create-step-2-heading">
+                  Preview
+                </h3>
+              </div>
+              <p
+                style={{
+                  ...styles.createStepHint,
+                  ...styles.createRightStepHint,
+                }}
+              >
+                {!data
+                  ? "Complete Import to generate a ring here."
+                  : repoList.length > 1 && displayName !== "demo"
+                    ? "Switch modes in the Export panel below Import. Filter by repo in Import when several repos apply."
+                    : "Switch Explore / Print & export in the Export panel—print view matches your PNG export."}
+              </p>
+            </div>
+            <div
+              style={{
+                width: "100%",
+                maxWidth: "100%",
+                minWidth: 0,
+                marginLeft: "auto",
+                marginRight: "auto",
+              }}
+              role="region"
+              aria-labelledby="create-step-2-heading"
+            >
+              {data ? (
+                <>
                   {createPreviewMode === "explore" ? (
                     <CreateExplorePreviewBlock
                       targetMaxPx={printPreviewSheetPx}
@@ -1243,36 +1312,43 @@ export default function App() {
                       loading={loading}
                     />
                   ) : (
-                    <PrintProductMockup
-                      variant="embedded"
-                      backdrop={printPreviewBackdrop}
-                      printSize={printProductSize}
-                      printPaper={printProductPaper}
-                      facePx={printPreviewSheetPx}
-                      onFaceWidth={reportPreviewFaceW}
-                    >
-                      <div style={styles.createPrintPreviewInner}>
-                        {hasRingData && (
-                          <PrintCornerOverlay
-                            mode="edit"
-                            slots={printCornerSlots}
-                            onSlotChange={setPrintCornerSlot}
-                            cornerTexts={printCornerTexts}
-                            releaseFetchState={releaseFetchState}
-                          />
-                        )}
-                        <div style={styles.createPrintPreviewRing}>
-                          <TreeRing
-                            pullRequests={pullRequests}
-                            username={displayName}
-                            repoName={selectedRepo}
-                            size={createPageRingSize}
-                            options={dendroPrintOptions}
-                          />
-                          {loading && <div style={styles.loadingOverlay}>Loading…</div>}
+                    <>
+                      <PrintProductMockup
+                        variant="embedded"
+                        backdrop={printPreviewBackdrop}
+                        printSize={printProductSize}
+                        printPaper={printProductPaper}
+                        facePx={printPreviewSheetPx}
+                        onFaceWidth={reportPreviewFaceW}
+                      >
+                        <div style={styles.createPrintPreviewInner}>
+                          {hasRingData && (
+                            <PrintCornerOverlay
+                              slots={printCornerSlots}
+                              cornerTexts={printCornerTexts}
+                              releaseFetchState={releaseFetchState}
+                            />
+                          )}
+                          <div style={styles.createPrintPreviewRing}>
+                            <TreeRing
+                              pullRequests={pullRequests}
+                              username={displayName}
+                              repoName={selectedRepo}
+                              size={createPageRingSize}
+                              options={dendroPrintOptions}
+                            />
+                            {loading && <div style={styles.loadingOverlay}>Loading…</div>}
+                          </div>
                         </div>
-                      </div>
-                    </PrintProductMockup>
+                      </PrintProductMockup>
+                      {hasRingData && (
+                        <PrintCornerEditorBar
+                          slots={printCornerSlots}
+                          cornerTexts={printCornerTexts}
+                          onSlotChange={setPrintCornerSlot}
+                        />
+                      )}
+                    </>
                   )}
                 </>
               ) : (
@@ -1280,68 +1356,6 @@ export default function App() {
                   {loading ? "Loading…" : "Generate a ring to see the print preview."}
                 </div>
               )}
-            </div>
-            <p style={styles.createPreviewModeHint}>
-              {data && createPreviewMode === "explore"
-                ? "Switch to Print & export to edit corner labels and match the PNG you’ll download or send to print."
-                : data && createPreviewMode === "print"
-                  ? "Corner labels and framing match your exported image. Use Explore to inspect each ring with tooltips."
-                  : null}
-            </p>
-            <div style={styles.createActionsRowBelowViz}>
-              <button
-                type="button"
-                style={styles.createSecondaryBtn}
-                onClick={handleDownload}
-                disabled={exporting || !canExport}
-              >
-                {exporting ? "Exporting…" : "Download PNG"}
-              </button>
-              <button
-                type="button"
-                style={styles.createPrimaryBtn}
-                onClick={() => {
-                  setCreatePreviewMode("print");
-                  setShowPrintPanel(true);
-                }}
-                disabled={!canExport}
-              >
-                Order Print
-              </button>
-            </div>
-            {canExport && (
-              <div style={styles.createShareBlockBelowViz}>
-                <label style={styles.createShareCheckboxRow}>
-                  <input
-                    type="checkbox"
-                    checked={shareToBrowse}
-                    disabled={!authenticated || shareBusy}
-                    onChange={(e) => void toggleShareToBrowse(e.target.checked)}
-                    style={styles.createReleaseCreditCheckbox}
-                  />
-                  <span>Add to public Browse gallery</span>
-                </label>
-                <p style={styles.createShareHint}>
-                  {authenticated
-                    ? "Anyone can open shared trees from Browse. Uncheck to remove the current slug from the gallery."
-                    : "Sign in with GitHub to publish this tree to the public Browse gallery."}
-                </p>
-                {shareMessage && (
-                  <p
-                    style={{
-                      ...styles.createShareMessage,
-                      ...(shareMessage.startsWith("Error") ? styles.createShareMessageErr : null),
-                    }}
-                  >
-                    {shareMessage}
-                  </p>
-                )}
-              </div>
-            )}
-            <div style={styles.infoAreaCreate}>
-              <span>width = files</span>
-              <span style={styles.infoDividerCreate}>·</span>
-              <span>texture = commits</span>
             </div>
           </div>
         </div>
@@ -2040,7 +2054,7 @@ const styles = {
     maxWidth: "100%",
     display: "flex",
     flexDirection: "column",
-    gap: 0,
+    gap: 20,
   },
   createRight: {
     flex: "1 1 420px",
@@ -2050,14 +2064,34 @@ const styles = {
     flexDirection: "column",
     gap: 10,
   },
-  createPreviewToggle: {
-    display: "flex",
-    flexDirection: "row",
+  createRightStepHead: {
     width: "100%",
     maxWidth: 420,
     marginLeft: "auto",
     marginRight: "auto",
-    marginBottom: 12,
+    marginBottom: 4,
+  },
+  createRightStepHint: {
+    marginTop: 8,
+    marginBottom: 0,
+    textAlign: "left",
+  },
+  createExportCard: {
+    width: "100%",
+    background: "#ffffff",
+    border: "1px solid #e4e4e7",
+    borderRadius: 0,
+    padding: "18px 18px 20px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 0,
+    boxSizing: "border-box",
+  },
+  createExportModeToggle: {
+    display: "flex",
+    flexDirection: "row",
+    width: "100%",
+    marginBottom: 8,
     border: "1px solid #e4e4e7",
     background: "#fafafa",
     boxSizing: "border-box",
@@ -2079,16 +2113,6 @@ const styles = {
   createPreviewTabActive: {
     background: "#18181b",
     color: "#fafafa",
-  },
-  createPreviewModeHint: {
-    margin: "0 0 4px",
-    fontSize: 11,
-    lineHeight: 1.45,
-    color: "#71717a",
-    textAlign: "center",
-    maxWidth: 420,
-    marginLeft: "auto",
-    marginRight: "auto",
   },
   createIntro: {
     display: "flex",
@@ -2334,22 +2358,6 @@ const styles = {
     cursor: "pointer",
     fontFamily: "inherit",
   },
-  starterRowCreate: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-    justifyContent: "flex-start",
-  },
-  starterChipCreate: {
-    border: "1px solid #e4e4e7",
-    borderRadius: 999,
-    padding: "6px 12px",
-    fontSize: 12,
-    background: "#fafafa",
-    color: "#3f3f46",
-    cursor: "pointer",
-    fontFamily: "inherit",
-  },
   repoRowCreate: {
     display: "flex",
     flexDirection: "column",
@@ -2394,49 +2402,35 @@ const styles = {
     marginTop: 4,
   },
   createPrintSettingsLabel: {
+    display: "block",
     fontSize: 11,
     fontWeight: 600,
     letterSpacing: "0.06em",
     textTransform: "uppercase",
     color: "#52525b",
+    marginBottom: 4,
   },
   createPrintSettingsLabelPaper: {
+    display: "block",
     fontSize: 11,
     fontWeight: 600,
     letterSpacing: "0.06em",
     textTransform: "uppercase",
     color: "#52525b",
-    marginTop: 4,
+    marginTop: 8,
+    marginBottom: 4,
   },
-  createPrintSettingsOptions: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  createPrintOption: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "8px 12px",
-    borderRadius: 0,
+  createPrintSelect: {
+    width: "100%",
+    fontSize: 13,
+    padding: "10px 12px",
+    borderRadius: 6,
     border: "1px solid #e4e4e7",
     background: "#fafafa",
     color: "#3f3f46",
     cursor: "pointer",
     fontFamily: "inherit",
-    fontSize: 13,
-    textAlign: "left",
-    transition: "background 0.12s, border-color 0.12s",
-  },
-  createPrintOptionActive: {
-    background: "#18181b",
-    borderColor: "#18181b",
-    color: "#fafafa",
-  },
-  createPrintOptionMeta: {
-    fontSize: 12,
-    fontWeight: 500,
-    opacity: 0.85,
+    boxSizing: "border-box",
   },
   createBackdropRow: {
     display: "flex",
@@ -2486,14 +2480,14 @@ const styles = {
     border: "1px dashed #c4c0b8",
     boxSizing: "border-box",
   },
-  createActionsRowBelowViz: {
+  createExportActionsRow: {
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
     gap: 10,
-    marginTop: 14,
+    marginTop: 16,
   },
-  createShareBlockBelowViz: {
+  createShareBlockExport: {
     marginTop: 12,
     paddingTop: 12,
     borderTop: "1px solid #e4e4e7",
@@ -2590,6 +2584,7 @@ const styles = {
     fontFamily: "inherit",
   },
   infoAreaCreate: {
+    marginTop: 10,
     fontSize: 12,
     color: "#71717a",
     display: "flex",
