@@ -2,9 +2,6 @@ import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMe
 import TreeRing from "./TreeRing.jsx";
 import GallerySection from "./components/GallerySection.jsx";
 import PrintPanel from "./components/PrintPanel.jsx";
-import PrintCornerOverlay from "./components/PrintCornerOverlay.jsx";
-import PrintCornerEditorBar from "./components/PrintCornerEditorBar.jsx";
-import PrintProductMockup from "./components/PrintProductMockup.jsx";
 import LazyDendroStamp from "./components/LazyDendroStamp.jsx";
 import { generateDemoData } from "./github.js";
 import { seedGallery } from "./data/seedGallery.js";
@@ -36,6 +33,9 @@ import {
   Sun,
   CircleUser,
 } from "lucide-react";
+
+/** Physical print checkout: hidden while we focus on explore + PNG; landing teases “coming soon”. */
+const FEATURE_PRINT_ORDERS = false;
 
 /** Browse / Create / Account top bar: Sign in link, or account icon when authenticated. */
 function TopBarNavAuth({ authenticated, currentPage, setCurrentPage, styles: navStyles }) {
@@ -280,10 +280,8 @@ export default function App() {
   const [printCornerSlots, setPrintCornerSlots] = useState(() => ({ ...PRINT_CORNER_DEFAULTS }));
   const [printProductSize, setPrintProductSize] = useState(() => PRINT_SIZES[1]);
   const [printProductPaper, setPrintProductPaper] = useState(() => PRINT_PAPERS[0]);
-  /** 'clean' = white/matte-style surround (default); 'gallery' = gray room wall */
-  const [printPreviewBackdrop, setPrintPreviewBackdrop] = useState(/** @type {"clean" | "gallery"} */ ("clean"));
-  /** explore = interactive rings + tooltips; print = mockup, corner labels, matches export */
-  const [createPreviewMode, setCreatePreviewMode] = useState(/** @type {"explore" | "print"} */ ("explore"));
+  /** Backdrop for print mockup modal when FEATURE_PRINT_ORDERS is on. */
+  const printPreviewBackdrop = /** @type {"clean" | "gallery"} */ ("clean");
   const [previewFaceMeasuredW, setPreviewFaceMeasuredW] = useState(0);
 
   const reportPreviewFaceW = useCallback((w) => {
@@ -292,7 +290,7 @@ export default function App() {
 
   useEffect(() => {
     setPreviewFaceMeasuredW(0);
-  }, [printProductSize.id, printProductPaper.id, printPreviewBackdrop, createPreviewMode]);
+  }, [printProductSize.id, printProductPaper.id]);
 
   const refreshGallery = useCallback(async () => {
     const stored = getGalleryEntries();
@@ -595,10 +593,6 @@ export default function App() {
     });
   }, []);
 
-  const setPrintCornerSlot = useCallback((id, value) => {
-    setPrintCornerSlots((prev) => ({ ...prev, [id]: value }));
-  }, []);
-
   const wantsReleaseForPrint = useMemo(
     () => Object.values(printCornerSlots).some((v) => v === "releaseTag"),
     [printCornerSlots],
@@ -707,14 +701,6 @@ export default function App() {
     setData({ pullRequests: entry.pullRequests, repos: [] });
     setDisplayName(entry.displayName);
     setCurrentPage("create");
-    setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
-  }, []);
-
-  const handleAccountOrderPrint = useCallback((entry) => {
-    setData({ pullRequests: entry.pullRequests, repos: [] });
-    setDisplayName(entry.displayName);
-    setCurrentPage("create");
-    setShowPrintPanel(true);
     setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
   }, []);
 
@@ -987,7 +973,7 @@ export default function App() {
             <p style={styles.createPageSub}>
               {displayName && displayName !== "demo"
                 ? `Showing ${displayName}.`
-                : "Link or example, preview the ring, then download or print."}
+                : "Link or example, explore the ring, then download a PNG."}
             </p>
           </div>
         </header>
@@ -1069,94 +1055,14 @@ export default function App() {
                     Export
                   </h3>
                 </div>
-                {hasRingData && (
-                  <div style={styles.createExportModeToggle} role="tablist" aria-label="Preview mode">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={createPreviewMode === "explore"}
-                      style={{
-                        ...styles.createPreviewTab,
-                        ...(createPreviewMode === "explore" ? styles.createPreviewTabActive : null),
-                      }}
-                      onClick={() => setCreatePreviewMode("explore")}
-                    >
-                      Explore
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={createPreviewMode === "print"}
-                      style={{
-                        ...styles.createPreviewTab,
-                        ...(createPreviewMode === "print" ? styles.createPreviewTabActive : null),
-                      }}
-                      onClick={() => setCreatePreviewMode("print")}
-                    >
-                      Print &amp; export
-                    </button>
-                  </div>
-                )}
                 <p style={styles.createStepHint}>
                   {!hasRingData
-                    ? "After Import, pick Explore or Print & export to drive step 2. PNG download and checkout need live GitHub data (not the demo)."
-                    : createPreviewMode === "explore"
-                      ? "Inspect rings in step 2. Switch to Print & export for size, paper, corner labels, PNG, print order, and Browse sharing."
-                      : !canExport
-                        ? "Size and paper update the print preview. Corner labels: panel under the preview (live data only). Download and checkout need live data, not the demo."
-                        : "Size and paper set export resolution. Corner labels: panel under the preview. Download PNG, order a print, or share to Browse."}
+                    ? "After Import, explore the ring in Preview. PNG download and Browse sharing need live GitHub data (not the demo)."
+                    : canExport
+                      ? "Pan and zoom in Preview, hover rings for details. Download a high-res PNG or share to Browse."
+                      : "Explore the demo in Preview. Download PNG and gallery sharing need live GitHub data."}
                 </p>
-                {hasRingData && createPreviewMode === "print" && (
-                  <div style={styles.createPrintSettingsBlock}>
-                    <label style={styles.createPrintSettingsLabel} htmlFor="create-print-size-select">
-                      Print size
-                    </label>
-                    <select
-                      id="create-print-size-select"
-                      value={printProductSize.id}
-                      onChange={(e) => {
-                        const next = PRINT_SIZES.find((s) => s.id === e.target.value);
-                        if (next) setPrintProductSize(next);
-                      }}
-                      style={styles.createPrintSelect}
-                    >
-                      {PRINT_SIZES.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.label} — ${s.price}
-                        </option>
-                      ))}
-                    </select>
-                    <label style={styles.createPrintSettingsLabelPaper} htmlFor="create-print-paper-select">
-                      Paper
-                    </label>
-                    <select
-                      id="create-print-paper-select"
-                      value={printProductPaper.id}
-                      onChange={(e) => {
-                        const next = PRINT_PAPERS.find((p) => p.id === e.target.value);
-                        if (next) setPrintProductPaper(next);
-                      }}
-                      style={styles.createPrintSelect}
-                    >
-                      {PRINT_PAPERS.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.label}
-                          {p.surcharge > 0 ? ` — +$${p.surcharge}` : " — included"}
-                        </option>
-                      ))}
-                    </select>
-                    <label style={styles.createBackdropRow}>
-                      <input
-                        type="checkbox"
-                        checked={printPreviewBackdrop === "gallery"}
-                        onChange={(e) => setPrintPreviewBackdrop(e.target.checked ? "gallery" : "clean")}
-                        style={styles.createBackdropCheckbox}
-                      />
-                      <span>Show room backdrop (neutral gallery wall)</span>
-                    </label>
-                  </div>
-                )}
-                {canExport && createPreviewMode === "print" && wantsReleaseForPrint && creditTarget && (
+                {canExport && wantsReleaseForPrint && creditTarget && (
                   <p style={styles.createReleaseCreditStatus}>
                     {releaseFetchState === "loading" && "Fetching release from GitHub…"}
                     {releaseFetchState === "none" && "No published release — release corner stays empty on export."}
@@ -1171,23 +1077,24 @@ export default function App() {
                 >
                   <button
                     type="button"
-                    style={styles.createSecondaryBtn}
+                    style={
+                      FEATURE_PRINT_ORDERS ? styles.createSecondaryBtn : { ...styles.createSecondaryBtn, flex: 1 }
+                    }
                     onClick={handleDownload}
                     disabled={exporting || !canExport}
                   >
                     {exporting ? "Exporting…" : "Download PNG"}
                   </button>
-                  <button
-                    type="button"
-                    style={styles.createPrimaryBtn}
-                    onClick={() => {
-                      setCreatePreviewMode("print");
-                      setShowPrintPanel(true);
-                    }}
-                    disabled={!canExport}
-                  >
-                    Order Print
-                  </button>
+                  {FEATURE_PRINT_ORDERS ? (
+                    <button
+                      type="button"
+                      style={styles.createPrimaryBtn}
+                      onClick={() => setShowPrintPanel(true)}
+                      disabled={!canExport}
+                    >
+                      Order Print
+                    </button>
+                  ) : null}
                 </div>
                 {canExport && (
                   <div style={styles.createShareBlockExport}>
@@ -1245,8 +1152,8 @@ export default function App() {
                   {!data
                     ? "Complete Import to generate a ring here."
                     : repoList.length > 1 && displayName !== "demo"
-                      ? "Switch modes in the Export panel below Import. Filter by repo in Import when several repos apply."
-                      : "Switch Explore / Print & export in the Export panel—print view matches your PNG export."}
+                      ? "Use Export below for PNG and sharing. Filter by repo in Import when several repos apply."
+                      : "Pan, zoom, and hover rings for PR details. Export a PNG from the panel to the left."}
                 </p>
               </div>
               <div
@@ -1261,61 +1168,19 @@ export default function App() {
                 aria-labelledby="create-step-2-heading"
               >
                 {data ? (
-                  <>
-                    {createPreviewMode === "explore" ? (
-                      <CreateExplorePreviewBlock
-                        targetMaxPx={printPreviewSheetPx}
-                        onShellWidth={reportPreviewFaceW}
-                        ringSize={createPageRingSize}
-                        pullRequests={pullRequests}
-                        displayName={displayName}
-                        repoName={null}
-                        options={dendroPrintOptions}
-                        loading={loading}
-                      />
-                    ) : (
-                      <>
-                        <PrintProductMockup
-                          variant="embedded"
-                          backdrop={printPreviewBackdrop}
-                          printSize={printProductSize}
-                          printPaper={printProductPaper}
-                          facePx={printPreviewSheetPx}
-                          onFaceWidth={reportPreviewFaceW}
-                        >
-                          <div style={styles.createPrintPreviewInner}>
-                            {hasRingData && (
-                              <PrintCornerOverlay
-                                slots={printCornerSlots}
-                                cornerTexts={printCornerTexts}
-                                releaseFetchState={releaseFetchState}
-                              />
-                            )}
-                            <div style={styles.createPrintPreviewRing}>
-                              <TreeRing
-                                pullRequests={pullRequests}
-                                username={displayName}
-                                repoName={null}
-                                size={createPageRingSize}
-                                options={dendroPrintOptions}
-                              />
-                              {loading && <div style={styles.loadingOverlay}>Loading…</div>}
-                            </div>
-                          </div>
-                        </PrintProductMockup>
-                        {hasRingData && (
-                          <PrintCornerEditorBar
-                            slots={printCornerSlots}
-                            cornerTexts={printCornerTexts}
-                            onSlotChange={setPrintCornerSlot}
-                          />
-                        )}
-                      </>
-                    )}
-                  </>
+                  <CreateExplorePreviewBlock
+                    targetMaxPx={printPreviewSheetPx}
+                    onShellWidth={reportPreviewFaceW}
+                    ringSize={createPageRingSize}
+                    pullRequests={pullRequests}
+                    displayName={displayName}
+                    repoName={null}
+                    options={dendroPrintOptions}
+                    loading={loading}
+                  />
                 ) : (
                   <div style={styles.createPrintPreviewPlaceholder}>
-                    {loading ? "Loading…" : "Generate a ring to see the print preview."}
+                    {loading ? "Loading…" : "Generate a ring to explore here."}
                   </div>
                 )}
               </div>
@@ -1380,14 +1245,6 @@ export default function App() {
                         disabled={shareBusy}
                       >
                         Open in Create
-                      </button>
-                      <button
-                        type="button"
-                        style={styles.createPrimaryBtn}
-                        onClick={() => handleAccountOrderPrint(entry)}
-                        disabled={shareBusy}
-                      >
-                        Order print
                       </button>
                       <button
                         type="button"
@@ -1490,9 +1347,11 @@ export default function App() {
                               <p style={styles.llmDefinition}>
                                 <span style={styles.llmDefNum}>3.</span>
                                 <Printer size={15} strokeWidth={1.75} style={styles.llmInlineIcon} aria-hidden />
-                                Maybe get a print? Third step after you grow a ring: when it feels right, tap{" "}
-                                <strong style={styles.llmPromptStrong}>Order Print</strong> on Create to put it on your
-                                wall.
+                                <span style={styles.llmComingSoonWrap}>
+                                  <strong style={styles.llmPromptStrong}>Museum prints</strong>
+                                  <span style={styles.llmComingSoonBadge}>Coming soon</span>
+                                </span>
+                                — hang a high-res ring on your wall. For now, play in Create and grab a PNG.
                               </p>
                             </div>
                           </div>
@@ -1554,8 +1413,7 @@ export default function App() {
       </>
       )}
 
-      {/* Print Panel Modal */}
-      {showPrintPanel && (
+      {FEATURE_PRINT_ORDERS && showPrintPanel ? (
         <PrintPanel
           onClose={() => setShowPrintPanel(false)}
           onOrder={handlePrintOrder}
@@ -1572,7 +1430,7 @@ export default function App() {
           }}
           printCornerTexts={printCornerTexts}
         />
-      )}
+      ) : null}
 
       <footer style={styles.siteCredit} aria-label="Credit">
         Made by{" "}
@@ -1907,6 +1765,24 @@ const styles = {
   llmPromptStrong: {
     fontWeight: 600,
     color: "#27272a",
+  },
+  llmComingSoonWrap: {
+    display: "inline-flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: "6px 8px",
+    verticalAlign: "baseline",
+  },
+  llmComingSoonBadge: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "#52525b",
+    background: "#f4f4f5",
+    border: "1px solid #e4e4e7",
+    padding: "2px 7px",
+    lineHeight: 1.4,
   },
   llmInlineGalleryBtn: {
     border: "none",
