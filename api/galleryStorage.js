@@ -65,6 +65,7 @@ async function putJson(put, pathname, obj) {
     access: GALLERY_BLOB_ACCESS,
     contentType: "application/json",
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
 }
 
